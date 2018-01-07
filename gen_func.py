@@ -1,0 +1,342 @@
+# -*- coding: utf-8 -*-
+"""
+Helper Functions for Files
+
+these functions support generic manipulation of ICDS files for data analysis
+
+@author: Matt Theis, July 2017
+"""
+import os
+import pandas as pd
+import logging
+import logging.config
+import datetime
+import numpy as np
+from requests.auth import HTTPBasicAuth
+import requests, zipfile, StringIO
+import shutil
+
+location_file_dir = r'C:\Users\theism\Documents\Dimagi\Data\static-awc_location.csv'
+
+def data_file_list(directory, regex):
+    '''
+    Go through a directory, get files that match a regex, return list of files.
+
+    Parameters
+    ----------
+    directory : string
+      Full path to directory
+
+    regex : regex object
+      Regex used to specify filenames of desired csv files
+
+    Returns
+    -------
+    output : list of strings
+      List of file names in specified directory
+
+    '''
+    output = []
+    orig_dir = os.getcwd()
+    os.chdir(directory)
+    files = os.listdir('.')
+    for f in files:
+        mo = regex.search(f)
+        if mo is not None:
+            output.append(mo.group())
+    os.chdir(orig_dir)
+    return output
+
+
+def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None):
+    '''
+    Combine all csv files in directory to a single dataframe.
+
+    Parameters
+    ----------
+    directory : string
+      Full path to directory
+
+    regex : regex object
+      Regex used to specify filenames of desired csv files
+
+    date_cols : list of strings
+      Import specific columns in datetime format (optional, defaults to None)
+
+    cols_to_use : list of string
+      Import a subset of columns (optional, defaults to None)
+
+    Returns
+    -------
+    output : pandas dataframe
+      Dataframe of combined csv files
+    '''
+    try:
+        file_list = data_file_list(directory, regex)
+        frames = []
+        orig_dir = os.getcwd()
+        os.chdir(directory)
+        # append frames to a list of frames, then concat into one large frame
+        for data_file in file_list:
+            frame = pd.DataFrame()
+            frame = frame.fillna('')
+            frame = pd.read_csv(data_file, usecols=cols_to_use,
+                                parse_dates=date_cols,
+                                infer_datetime_format=True)
+            frames.append(frame)
+            logging.info('Adding %s with length %i rows' %
+                          (data_file, len(frame.index)))
+        df = pd.concat(frames, ignore_index=True, copy=False)
+        logging.info('Total combined length is %i rows\n' % len(df.index))
+        os.chdir(orig_dir)
+        return df
+    except Exception as err:
+        logging.error('An exception happened: ' + str(err))
+        raise
+
+
+def add_locations(df, left_index_column=None, location_column_names=['doc_id',
+                  'awc_name', 'block_name', 'district_name', 'state_name'],
+                  refresh_locations=False):
+    '''
+    Add location columns to an existing dataframe (ie-awc/block/district/etc).
+
+    Parameters
+    ----------
+    df : pandas dataframe
+      Dataframe to add location columns to
+    left_index_column : string
+      Name of column to use for location lookup (Optional, default to None -
+      if use None, will use the index column of the input df as the lookup)
+    location_column_names : list of strings
+      Location columns to add.  (Optional, defaults to doc_id, awc_name,
+      block_name, district_name, state_name).  
+
+    Returns
+    -------
+    output : pandas dataframe
+      Dataframe with added location columns.
+    '''
+    try:
+        orig_df_columns = df.columns.tolist()
+        if location_column_names in orig_df_columns:
+            logging.info('WARNING - column names to add already exist')
+        location_df = pd.read_csv(location_file_dir,
+                                  index_col=location_column_names[0],
+                                  usecols=location_column_names)
+        if left_index_column is not None:
+            df = pd.merge(df, location_df, left_on=left_index_column,
+                          right_index=True, how='left')
+        else:
+            location_df = location_df.groupby(level=0).last()
+            df = pd.merge(df, location_df, left_index=True,
+                          right_index=True, how='left')
+        desired_columns = location_column_names[1:] + orig_df_columns
+    except:
+       logging.info('ERROR - unable to find location file, not adding \
+                    location columns.  Looking in %s', location_file_dir)
+       raise
+    return df[desired_columns]
+
+
+def num_by_location(column_name, filter_name):
+    '''
+    Feed the function the name of the column in the location fixture and the
+    filter to apply, and the function will return the number that match the
+    filter in the location fixture - ie, how many users in state X
+
+    Parameters
+    ----------
+    column_name : string
+      Name of the column in the location fixture to look in
+    filter_name : string
+      Filter to apply in the column (ie, the name of the state to look for)
+
+    Returns
+    -------
+    num_out : integer
+      Number in input dataframe that match the specified filter
+    '''
+    try:
+        location_df = pd.read_csv(location_file_dir, index_col='doc_id', low_memory=False)
+        num_out = location_df[location_df[column_name] == filter_name].count()[column_name]
+    except:
+        logging.info('ERROR - unable to find location file, not adding \
+                     location columns.  Looking in %s', location_file_dir)
+        raise
+    return num_out
+
+
+def folder_name_to_location(full_name):
+    '''
+    Returns full state names from acceptable suffixes,
+    ie - xxx-mp -> Madya Pradesh
+
+    Parameters
+    ----------
+    full_name : string
+      Full file path with an expected suffix at the end
+
+    Returns
+    -------
+    string : string
+      Full location name based on suffix lookup.
+    '''
+    suffix = full_name[full_name.find('-')+1:]
+    lookup_dict = {'ap': 'Andhra Pradesh', 'bihar': 'Bihar',
+                   'ch': 'Chhattisgarh', 'jh': 'Jharkhand',
+                   'mp': 'Madhya Pradesh', 'user': 'User', 'test': 'Test'}
+    if suffix in lookup_dict:
+        return lookup_dict[suffix]
+    else:
+        return 'None'
+
+
+def add_usertype_from_id(df, df_id_col):
+    '''
+    Based on id location column (like commcare_location_id),
+    add a new column that shows id location type (aww/ls/block/district/state)
+
+    Parameters
+    ----------
+    df : pandas dataframe
+      Dataframe to append usertype column to
+
+    df_id_col : string
+      Name of column to use for location, ie commcare_location_id or owner_id
+
+    Returns
+    -------
+    df : pandas dataframe
+      Dataframe with 'location_type' column added.
+    '''
+    try:
+        col_names = ['doc_id', 'supervisor_id', 'block_id',
+                     'district_id', 'state_id']
+        loc_df = pd.read_csv(location_file_dir, usecols=col_names)
+        aww_series = pd.Series('aww', loc_df['doc_id'].unique())
+        ls_series = pd.Series('ls', loc_df['supervisor_id'].unique())
+        block_series = pd.Series('block', loc_df['block_id'].unique())
+        district_series = pd.Series('district', loc_df['district_id'].unique())
+        state_series = pd.Series('state', loc_df['state_id'].unique())
+        loc_series = pd.concat([aww_series, ls_series, block_series,
+                                district_series, state_series])
+        df['location_type'] = df[df_id_col].map(loc_series)
+    except:
+        logging.info('ERROR - unable to find location file, not adding \
+                     location_type column.  Looking in %s', location_file_dir)
+    return df
+
+
+def start_logging(output_dir):
+    '''
+    Starts a log file.  logging.debug to a file, logging.info to the console
+    from cookbook#logging-to-multiple-destinations
+
+    Parameters
+    ----------
+    output_dir : file path string
+      Dataframe to append usertype column to
+
+    df_id_col : string
+      Full path to directory to save logfile
+
+    Returns
+    -------
+    None
+    '''
+    text_out = os.path.join(output_dir, ('log_text_' +
+                            str(datetime.date.today()) + '.txt'))
+
+    # logging already happening? - if so, don't add more logging handlers
+    if not len(logging.getLogger('').handlers):
+        logging.basicConfig(level=logging.DEBUG,
+                            format='%(asctime)s: %(levelname)-8s %(message)s',
+                            datefmt='%m-%d-%y %H:%M',
+                            filename=text_out)
+
+        # define Handler which writes INFO messages or higher to the sys.stderr
+        console = logging.StreamHandler()
+        console.setLevel(logging.INFO)
+        # set a format which is simpler for console use
+        formatter = logging.Formatter('%(levelname)-8s %(message)s')
+        console.setFormatter(formatter)
+        # add the handler to the root logger
+        logging.getLogger('').addHandler(console)
+    return
+
+
+def get_credentials(file_path, key):
+    '''Gets a username and password stored in a csv file with the key/value
+    pairs of type, user, password
+    
+    Parameters
+    ----------
+    file_path : string
+      Path to the csv file where you have some credentials.  Csv file is 3
+      columns, key lookup of credentials (use), username (user), and password
+      (pass)
+    key : string
+      The lookup for your credentials in the first row
+
+    Returns
+    -------
+    user : string
+      Username
+    password : string
+      Password
+    '''
+    creds = pd.read_csv(file_path, index_col='use')
+    user = creds.loc[key, 'user']
+    password = creds.loc[key, 'pass']
+    return user, password
+
+
+def download_ucr(url, user, password, new_file_name, target_dir):
+    '''Downloads a UCR file if given the url, credentials, and full location to
+    save the filename.  Assumes is only one file in the downloaded UCR
+    
+    Parameters
+    ----------
+    url : string
+      URL to the UCR.  Entering this in a web browser will cause the file to
+      start downloading.
+    user : string
+      Username
+    password : string
+      Password
+    new_file_name : string
+      What you want to call your new file, including the file extension
+    target_dir : string
+      Path to the directory where you want to extract the file
+    
+    Returns
+    -------
+    None
+    '''
+    # go to the right place in commcare and download the file
+    r = requests.get(url, auth=HTTPBasicAuth(user, password))
+    try:
+        r.raise_for_status()
+    except Exception as exc:
+        print('There was a problem: %s' % (exc))
+    logging.info('Download complete')
+
+    # its a zipfile, so unpack and save in target_dir
+    logging.info('Unzipping file...')
+    z = zipfile.ZipFile(StringIO.StringIO(r.content))
+    cur_file_name = z.extract(z.namelist()[0], target_dir)
+    shutil.move(cur_file_name, os.path.join(target_dir, new_file_name))
+    logging.info('Moved new file %s to %s directory' % (new_file_name, target_dir))
+    z.close()
+
+def refresh_locations():
+    '''Will delete and re-download the static location file from ucr'''
+    location_download_link = 'https://www.icds-cas.gov.in/a/icds-cas/configurable_reports/data_sources/export/static-icds-cas-static-awc_location/?format=csv'
+    user, password = get_credentials(r'C:\Users\theism\Documents\Dimagi\Admin\user_info.csv', 'icds')
+    target_dir = (r'C:\Users\theism\Documents\Dimagi\Data')
+    location_file_name = 'static-awc_location.csv'
+    os.remove(os.path.join(target_dir, location_file_name))
+    logging.info('Refreshing data file: %s' % location_file_name)
+    download_ucr(location_download_link, user, password, location_file_name, target_dir)
+    return
