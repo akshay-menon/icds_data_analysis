@@ -96,7 +96,7 @@ for data_file in file_list:
     state_summ_df = state_summ_df.append(state_df)
         
     # for all data
-    this_date = input_df['form_date'][0]
+    this_date = input_df['form_date'].iloc[0]
     this_dates_mean = input_df['time_lag_hrs'].mean()
     this_dates_median = input_df['time_lag_hrs'].median()
     total_rows = input_df['awc_id'].count()
