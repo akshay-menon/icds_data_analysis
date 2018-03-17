@@ -27,12 +27,13 @@ update_output_files = True
 
 # note that UCR code not implemented until very late oct 2017
 start_date = pd.Timestamp('11-01-2017')
-#end_date = pd.Timestamp('12-07-2017') 
-end_date = pd.Timestamp(date.today()) 
+end_date = pd.Timestamp('02-21-2018') 
+#end_date = pd.Timestamp(date.today()) 
 
 # set states to plot
 real_state_list = ['Madhya Pradesh', 'Chhattisgarh', 'Andhra Pradesh', 'Bihar',
-                   'Jharkhand', 'Rajasthan', 'Uttar Pradesh', 'Maharashtra']
+                   'Jharkhand', 'Rajasthan']
+# , 'Uttar Pradesh', 'Maharashtra']
 
 # set buckets for time lag
 bins = [-1000, -0.25, 1, 6, 12, 24, 48, 72, 1000]
@@ -94,9 +95,10 @@ for data_file in file_list:
     state_buckets['total'] = state_buckets.sum(axis=1)
     state_df = state_df.join(state_buckets)
     state_summ_df = state_summ_df.append(state_df)
+    state_summ_df['total'] = state_summ_df.sum(axis=1)
         
     # for all data
-    this_date = input_df['form_date'][0]
+    this_date = input_df['form_date'].iloc[0]
     this_dates_mean = input_df['time_lag_hrs'].mean()
     this_dates_median = input_df['time_lag_hrs'].median()
     total_rows = input_df['awc_id'].count()

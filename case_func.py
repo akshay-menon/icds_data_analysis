@@ -164,6 +164,46 @@ def clean_case_data(df, output_dict, awc_test=True):
     return df, output_dict
 
 
+def string_starts_with(df, column, start_char, test_name, index_out=False):
+    '''
+    Test a column in a dataframe for a specific starting character
+    
+    Parameters
+    ----------
+    df : pandas dataframe
+      Input dataframe
+    column : string
+      Name of column in dataframe to test
+    start_char : string or regex
+      String to look for in each value in the column
+    test_name : string
+      Add a column to the output that contains this tag
+    index_out : boolean
+      (Optional) Include a boolean series on the original df.  False is default
+
+    Returns
+    -------
+    num_with_string : int
+      Number of values in dataframe that contain input string
+    has_string_df : pandas dataframe
+      Dataframe that only contains specified strings in tested column
+    has_string_index : pandas series of booleans
+      Boolean index on the orig df of values containing strings (only included
+      if index_out=True)
+    '''
+    df[column] = df[column].astype(str)
+    does_start_index = df[column].str.startswith(start_char)
+    does_start_df = df[does_start_index]
+    num_with_start = len(does_start_df.index)
+    does_start_df['error'] = test_name
+    logging.info('Found total of %i in dataset of %i for test: %s'
+                 % (num_with_start, len(df.index), test_name))
+    if not index_out:
+        return num_with_start, does_start_df
+    else:
+        return num_with_start, does_start_df, does_start_index
+   
+
 def string_contains(df, column, string, test_name, index_out=False):
     '''
     Test a column in a dataframe for presence of a substring
@@ -197,7 +237,7 @@ def string_contains(df, column, string, test_name, index_out=False):
     has_string_index = df[column].str.contains(string)
     has_string_df = df[has_string_index]
     num_with_string = len(has_string_df.index)
-    has_string_df.loc['error'] = test_name
+    has_string_df['error'] = test_name
     logging.info('Found total of %i in dataset of %i for test: %s'
                  % (num_with_string, len(df.index), test_name))
     if not index_out:
@@ -239,7 +279,7 @@ def string_not_contains(df, column, string, test_name, index_out=False):
     no_string_index = ~df[column].str.contains(string)
     no_string_df = df.loc[no_string_index]
     num_no_string = len(no_string_df.index)
-    no_string_df.loc['error'] = test_name
+    no_string_df['error'] = test_name
     logging.info('Found total of %i in dataset of %i for test: %s'
                  % (num_no_string, len(df.index), test_name))
     if not index_out:
@@ -328,6 +368,33 @@ def add_age_info(df, col_name='age_bracket', bin_type='brackets', relative_date=
     else:
         logging.info('ERROR - could not find dob in columns and unable to \
                      add age information to dataframe')
+    return df
+
+
+def check_beneficiary(df, relative_date='today'):
+    '''
+    Adds two T/F columns to your DF indicating if the person case is an ICDS
+    beneficiary or not (either Female 15-49 or 0-5)
+    '''
+    # get age
+    if 'dob' in df.columns.tolist():
+        if relative_date == 'today':
+            df['age_days'] = (datetime.date.today() - pd.to_datetime(
+                    df['dob'], errors='coerce')) / np.timedelta64(1, 'D')
+        else:
+            df['age_days'] = (df[relative_date] - pd.to_datetime(
+                    df['dob'], errors='coerce')) / np.timedelta64(1, 'D')
+        df['child_ben'] = (df['age_days'] >= 0) & (df['age_days'] <= 365.25*5)
+    else:
+        logging.info('ERROR - could not find dob in columns and unable to \
+                     add age information to dataframe')
+    # see if Female 15-49
+    if 'sex' and 'dob' in df.columns.tolist():
+        df['female_ben'] = (df['sex']=='F') & (df['age_days'] >= 365.25*15) & (df['age_days'] <= 365.25*49)
+    else:
+        logging.info('ERROR - could not find sex in columns and unable to add \
+                     female beneficiary information')
+    df = df.drop('age_days', axis=1)
     return df
 
 

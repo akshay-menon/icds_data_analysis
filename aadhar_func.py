@@ -212,6 +212,12 @@ def analyze_aadhar_data(df, output_dict):
             df, 'aadhar_number', '123456789', 'ascending_sequence')
     num_987654321, df_987654321 = string_contains(
             df, 'aadhar_number', '987654321', 'descending_sequence')
+    
+    # check start sequences - cant be 1 or 0
+    num_starts_1, df_starts_1 = string_starts_with(
+            df, 'aadhar_number', '1', 'starts_with_1')
+    num_starts_0, df_starts_0 = string_starts_with(
+            df, 'aadhar_number', '0', 'starts_with_0')
 
     # test for repeated digits via regex for more than 7 of the same
     # digits in a row (looking for 999999999)
@@ -333,6 +339,8 @@ def analyze_aadhar_data(df, output_dict):
                         'num_failed_checksum': num_failed_checksum,
                         'num_123456789': num_123456789,
                         'num_987654321': num_987654321,
+                        'num_starts_1': num_starts_1,
+                        'num_starts_0': num_starts_0,
                         'num_repeat_dig': num_repeat_dig,
                         'num_non_12_char': num_non_12_char,
                         'num_attempted_scan': num_attempted_scan,
@@ -349,7 +357,8 @@ def analyze_aadhar_data(df, output_dict):
 
     # create list of bad numbers by state. drop phi rows.
     error_frames = [non_numeric_df, non_12_char_df, df_123456789,
-                    df_987654321, df_repeat_dig, invalid_2dbarcode_df,
+                    df_987654321, df_starts_1, df_starts_0,
+                    df_repeat_dig, invalid_2dbarcode_df,
                     invalid_1dbarcode_df, mismatch_2d_scan_df,
                     mismatch_1d_scan_df, mismatch_bad1d_scan_df,
                     fail_checksum_df, num_99_df]

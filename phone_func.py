@@ -39,18 +39,6 @@ def clean_phone_data(df, output_dict):
     orig_phone_rows = len(df.index)
     logging.info('%i rows found' % orig_phone_rows)
 
-    # non verified phone numbers, contact_phone_number_is_verified != 1
-    if 'contact_phone_number_is_verified' in df.columns.tolist():
-        num_verified = df.groupby(
-                'contact_phone_number_is_verified').size()['1']
-        num_unverified = len(df.index)-num_verified
-        logging.info('%i non-verified numbers removed' % num_unverified)
-        df = df[df['contact_phone_number_is_verified'] == '1']
-    else:
-        num_unverified = np.nan
-        logging.info('Not removing non-verified phone numbers, '
-                     'contact_phone_number_is_verified column not found.')
-
     # get rid of non-female phone numbers, sex != F
     if 'sex' in df.columns.tolist():
         num_female = df.groupby('sex').size()['F']
@@ -84,6 +72,18 @@ def clean_phone_data(df, output_dict):
         logging.info('Not removing cases younger than 15yrs or older than '
                      '49 yrs, dob and/or opened_date columns not found.')
 
+    # non verified phone numbers, contact_phone_number_is_verified != 1
+    if 'contact_phone_number_is_verified' in df.columns.tolist():
+        num_verified = df.groupby(
+                'contact_phone_number_is_verified').size()['1']
+        num_unverified = len(df.index)-num_verified
+        logging.info('%i non-verified numbers removed' % num_unverified)
+        df = df[df['contact_phone_number_is_verified'] == '1']
+    else:
+        num_unverified = np.nan
+        logging.info('Not removing non-verified phone numbers, '
+                     'contact_phone_number_is_verified column not found.')
+    
     # prepare outputs
     num_clean_phone_nums = len(df.index)
     logging.info('%i clean phone numbers (out of %i cases, %i percent)'
@@ -236,7 +236,10 @@ def analyze_phone_data(df, output_dict, deep_dive_dups=False):
     logging.info('%i numbers have bad language code' % num_bad_lang_code)
 
     # numbers that are only 10 digits, other oddities
-    num_91_only = phone_value_counts.loc['91']
+    if '91' in phone_value_counts:
+        num_91_only = phone_value_counts.loc['91']
+    else:
+        num_91_only = 0
     logging.info('%i verified numbers that are just 91' % num_91_only)
 
     num_non_ten_char, non_ten_char_df = string_length(
