@@ -19,9 +19,13 @@ import aadhar_func
 # Specify data location, regex to use on files, date columns that are dates
 # Future - consider a GUI to do this input better
 
-target_dir = (r'C:\Users\theism\Documents\Dimagi\Data\Case2')
-output_dir = (r'C:\Users\theism\Documents\Dimagi\Results\Aadhar Numbers2')
+target_dir = (r'C:\Users\theism\Documents\Dimagi\Data\Person_Case')
+output_dir = (r'C:\Users\theism\Documents\Dimagi\Results\Aadhar Numbers')
 case_data_regex = re.compile(r'cases_\d\d\d.csv')
+
+# enter a date for only looking at cases opened after a specific date
+use_opened_cutoff = False
+opened_cutoff_date = pd.Timestamp('09-01-2017')
 
 # Practice Use Case on small dataset
 #target_dir = (r'C:\Users\theism\Documents\Dimagi\Data\person_phone_aadhar-ap-anantapur2')
@@ -67,6 +71,11 @@ for folder in folder_list:
         # clean phone specific data
         aadhar_clean_df, output_dict = aadhar_func.clean_aadhar_data(
                 case_clean_df, output_dict)
+        
+        # truncate data based on open date if so desired
+        if use_opened_cutoff:
+            logging.info('Removing any cases opened before %s' % opened_cutoff_date)
+            aadhar_clean_df = aadhar_clean_df[aadhar_clean_df['opened_date'] >= opened_cutoff_date]
 
         # compile age distribution stats
         logging.info('Value counts of cases with aadhar numbers:')
@@ -113,6 +122,8 @@ ordered_columns = ['orig_rows',
                    'num_99',
                    'num_123456789',
                    'num_987654321',
+                   'num_starts_1',
+                   'num_starts_0',
                    'num_repeat_dig',
                    'num_non_numeric',
                    'num_non_12_char',

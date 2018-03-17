@@ -20,22 +20,22 @@ import phone_func
 # Specify data location, regex to use on files, columns that are dates
 
 # PERSON CASE PHONE NUMBERS
-# target_dir = (r'C:\Users\theism\Documents\Dimagi\Data\Case')
-# output_dir = (r'C:\Users\theism\Documents\Dimagi\Results\Person case Phone Data Outputs')
-# output_dir = (r'C:\Users\theism\Dropbox (Dimagi)\Dimagi - Projects\Gates Foundation\ICDS Scale Up\Web App - Other (Non-Reporting)\Data\Data Quality\Phone Numbers')
-# case_data_regex = re.compile(r'cases_\d\d\d.csv')
-#case_date_cols = ['opened_date', 'dob']
-
-target_dir = (r'C:\Users\theism\Documents\Dimagi\Data\Case2')
+target_dir = (r'C:\Users\theism\Documents\Dimagi\Data\Person_Case')
 output_dir = (r'C:\Users\theism\Documents\Dimagi\Results\Person case Phone Data Outputs')
 case_data_regex = re.compile(r'cases_\d\d\d.csv')
 case_date_cols = ['opened_date', 'dob']
+user_case = False
+
+# enter a date for only looking at cases opened after a specific date
+use_opened_cutoff = False
+opened_cutoff_date = pd.Timestamp('09-01-2017')
 
 # USER PHONE NUMBERS
-# target_dir = (r'C:\Users\theism\Documents\Dimagi\Data\User2')
-# output_dir = (r'C:\Users\theism\Documents\Dimagi\Results\User case phone data')
-# case_data_regex = re.compile(r'Cases_\d\d\d.csv')
-# case_date_cols = []
+#target_dir = (r'C:\Users\theism\Documents\Dimagi\Data\User\User3')
+#output_dir = (r'C:\Users\theism\Documents\Dimagi\Results\User case phone data')
+#case_data_regex = re.compile(r'Cases_\d\d\d.csv')
+#case_date_cols = []
+#user_case = True
 
 # Practice Use Case on small dataset
 #target_dir = (r'C:\Users\theism\Documents\Dimagi\Data\person_phone_aadhar-ap-anantapur2')
@@ -56,6 +56,7 @@ folder_list = os.listdir(target_dir)
 phone_output_dict = {}
 phone_output = pd.DataFrame()
 phone_output = phone_output.fillna('')
+os.chdir(output_dir)
 
 logging.info('Starting scripts to analyze phone case data...')
 for folder in folder_list:
@@ -73,7 +74,7 @@ for folder in folder_list:
         case_df = gen_func.csv_files_to_df(os.path.join(target_dir, folder),
                                            case_data_regex, case_date_cols)
 
-        if location_name == 'User':
+        if user_case:
             case_df['phone_number'] = np.nan
             case_df['phone_number'] = case_df.apply(
                     lambda row: row['aww_phone_number']
@@ -84,8 +85,14 @@ for folder in folder_list:
         # clean case data
         case_clean_df, phone_output_dict = case_func.clean_case_data(
                 case_df, phone_output_dict, awc_test=False)
+        
+        # truncate data based on open date if so desired
+        if use_opened_cutoff:
+            logging.info('Removing any cases opened before %s' % opened_cutoff_date)
+            case_clean_df = case_clean_df[case_clean_df['opened_date'] >= opened_cutoff_date]
 
-        if location_name == 'User':
+        # if the case type is for a user, rather than belonging to a user
+        if user_case:
             case_df = gen_func.add_usertype_from_id(case_df, 'commcare_location_id')
             logging.info('User distribution by type for open, non-test user cases:')
             logging.info(case_df['location_type'].value_counts())
@@ -95,7 +102,23 @@ for folder in folder_list:
                 case_clean_df, phone_output_dict)
         phone_output_dict, bad_num_list = phone_func.analyze_phone_data(
                 phone_clean_df, phone_output_dict, deep_dive_dups)
-        bad_num_list.to_csv(os.path.join(target_dir, (
+        logging.info('Finished initial analysis...')
+        
+        # add geographic information to bad phone num list
+        real_state_list = ['Madhya Pradesh', 'Chhattisgarh', 'Andhra Pradesh', 'Bihar',
+                           'Jharkhand', 'Rajasthan']
+        # , 'Uttar Pradesh', 'Maharashtra']
+        if user_case:
+            location_columns = ['doc_id', 'block_name', 'district_name', 'state_name']
+            bad_num_list = gen_func.add_locations(bad_num_list, 'commcare_location_id', location_columns)
+        else:
+            location_columns = ['doc_id', 'block_name', 'district_name']
+            bad_num_list = gen_func.add_locations(bad_num_list, 'owner_id', location_columns)
+        bad_num_list = bad_num_list.loc[(bad_num_list['state_name'].isin(real_state_list))]
+        bad_num_list = bad_num_list.drop(['has_aadhar', 'aadhar_number',
+                                          'raw_aadhar_string', 'name',
+                                          'has_rch', 'rch_id'], axis=1)
+        bad_num_list.to_csv(os.path.join(output_dir, (
                 'bad_num_list_' + location_name + '_' + str(
                         datetime.date.today()) + '.csv')))
 
@@ -115,15 +138,14 @@ phone_output = phone_output.set_index('location')
 phone_output.loc['Total'] = phone_output.sum()
 ordered_columns = ['orig_rows',
                    'num_closed',
-                   'num_wo_hh_id',
                    'num_blank_name',
                    'non_awc_num',
                    'num_test_locations',
                    'num_test_users',
                    'num_clean_rows',
-                   'num_unverified',
                    'num_non_female',
                    'num_out_of_age',
+                   'num_unverified',
                    'num_clean_phone_nums',
                    'unique_phone',
                    'num_duplicates',

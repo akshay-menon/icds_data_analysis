@@ -82,7 +82,8 @@ def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None):
             frame = frame.fillna('')
             frame = pd.read_csv(data_file, usecols=cols_to_use,
                                 parse_dates=date_cols,
-                                infer_datetime_format=True)
+                                infer_datetime_format=True,
+                                low_memory=False)
             frames.append(frame)
             logging.info('Adding %s with length %i rows' %
                           (data_file, len(frame.index)))
@@ -97,7 +98,7 @@ def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None):
 
 def add_locations(df, left_index_column=None, location_column_names=['doc_id',
                   'awc_name', 'block_name', 'district_name', 'state_name'],
-                  refresh_locations=False):
+                  refresh_loc=False):
     '''
     Add location columns to an existing dataframe (ie-awc/block/district/etc).
 
@@ -117,6 +118,8 @@ def add_locations(df, left_index_column=None, location_column_names=['doc_id',
     output : pandas dataframe
       Dataframe with added location columns.
     '''
+    if refresh_loc == True:
+        refresh_locations()
     try:
         orig_df_columns = df.columns.tolist()
         if location_column_names in orig_df_columns:
@@ -185,7 +188,10 @@ def folder_name_to_location(full_name):
     suffix = full_name[full_name.find('-')+1:]
     lookup_dict = {'ap': 'Andhra Pradesh', 'bihar': 'Bihar',
                    'ch': 'Chhattisgarh', 'jh': 'Jharkhand',
-                   'mp': 'Madhya Pradesh', 'user': 'User', 'test': 'Test'}
+                   'mp': 'Madhya Pradesh', 'raj': 'Rajasthan',
+                   'up': 'Uttar Pradesh', 'mah': 'Maharashtra',
+                   'user': 'User', 'test': 'Test',
+                   'ap2': 'Andhra Pradesh2'}
     if suffix in lookup_dict:
         return lookup_dict[suffix]
     else:
@@ -339,4 +345,52 @@ def refresh_locations():
     os.remove(os.path.join(target_dir, location_file_name))
     logging.info('Refreshing data file: %s' % location_file_name)
     download_ucr(location_download_link, user, password, location_file_name, target_dir)
+    return
+
+def iterate_ucr_download(ucr_name, my_filter, filter_list, target_dir):
+    '''Downloads mulitple UCR data from HQ.  Use sparingly.
+    Format of files is csv.
+    
+    Parameters
+    ----------
+    ucr_name : string
+      Name of the UCR you want to download - like static-icds-cas-static-tasks_cases
+    my_filter : string
+      This the property within the UCR you want to filter by.  UCR data is way
+      too large to get something without a filter.  ie - district_id
+    filter_list : list of strings
+      This is the filter list to iterate through.  For example, if you are
+      filtering on district_id, this list is all the district_id's you want to 
+      iterate through      
+    target_dir : absolute path
+      Path to the folder you want to save the data to
+
+    Returns
+    -------
+    None
+    '''
+    
+    base_url = 'https://www.icds-cas.gov.in/a/icds-cas/configurable_reports/data_sources/export/'
+    # eventually find a way not to hardcode this
+    user, password = get_credentials(r'C:\Users\theism\Documents\Dimagi\Admin\user_info.csv', 'icds')
+    i = 1
+    for item in filter_list:
+        download_url = base_url + ucr_name + '/?format=csv&' + my_filter + '=' + item
+        new_file_name = ucr_name + '_' + str(i) + '.csv'
+        download_ucr(download_url, user, password, new_file_name, target_dir)
+        i += 1
+    return
+
+def renumber_files(directory, start_num, basename):
+    '''Iterates the number in a filename.  The XXX in cases_XXX.csv would be 
+    incremented from a start number in the directory given.  Cases_ is the
+    basename in this example.  Start num is the number of the last file that
+    exists.  If you have a 101, this will start at 102.'''
+    os.chdir(directory)
+    files = os.listdir('.')
+    num = start_num + 1
+    for f in files:
+        os.rename(f, basename + str(num) + '.csv')
+        num += 1
+    logging.info('Renumbering %i files in %s' % (num - start_num, directory))
     return

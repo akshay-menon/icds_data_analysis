@@ -35,14 +35,14 @@ output_dir = 'C:\\Users\\theism\\Documents\\Dimagi\\Results\\Form Submissions'
 # will download new files if you don't have them in your target_dir already
 # NOTE - if already have the output daily_forms_db, don't need the old data
 download_new = True
-download_start = pd.Timestamp('03-20-2017')
-#download_stop = pd.Timestamp(date.today()) 
-download_stop = pd.Timestamp('12-09-2017') 
+download_start = pd.Timestamp('11-01-2017')
+download_stop = pd.Timestamp(date.today()) 
+#download_stop = pd.Timestamp('12-09-2017') 
 
 # will remove the last refresh_days of files and download them again, in case
 # all forms haven't been submitted for those days yet
 # NOTE - requires download_new = True to operate
-refresh_recent = True
+refresh_recent = False
 refresh_days = 10
 
 # allows all data to be recalculated

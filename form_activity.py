@@ -33,7 +33,7 @@ end_date = pd.Timestamp(date.today())
 
 # will download new files if you don't have them in your target_dir already
 # NOTE - if already have the output daily_forms_db, don't need the old data
-download_new = True
+download_new = False
 download_start = pd.Timestamp('03-20-2017')
 download_stop = pd.Timestamp(date.today())
 
