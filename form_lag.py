@@ -26,8 +26,8 @@ output_dir = 'C:\\Users\\theism\\Documents\\Dimagi\\Results\\Form Lag'
 update_output_files = True
 
 # note that UCR code not implemented until very late oct 2017
-start_date = pd.Timestamp('11-01-2017')
-end_date = pd.Timestamp('02-21-2018') 
+start_date = pd.Timestamp('03-15-2018')
+end_date = pd.Timestamp('03-17-2018') 
 #end_date = pd.Timestamp(date.today()) 
 
 # set states to plot
@@ -64,7 +64,7 @@ dist_df = dist_df.drop_duplicates('district_name').reset_index().set_index('dist
 # specify what data cols to get
 date_cols = ['form_date', 'form_time', 'received_on']
 col_names = date_cols + ['awc_id']
-location_columns = ['doc_id', 'state_name', 'district_name']
+location_columns = ['doc_id', 'state_name', 'district_name', 'block_name']
 file_list = ff.file_subset_by_date(start_date, end_date, target_dir, data_regex)
 
 # iterate through files to build single dataframe
@@ -155,7 +155,7 @@ output_df = summary_df.join(bucket_df)
 
 # get list of aww's whose phone date may be suspect from last iteration
 awc_bad_time_list = input_df[input_df['time_bucket'] == '<0'].groupby(['awc_id']).size().to_frame(name='count').reset_index()
-awc_bad_time_list = gf.add_locations(awc_bad_time_list, 'awc_id', ['doc_id', 'awc_name', 'district_name', 'state_name'])
+awc_bad_time_list = gf.add_locations(awc_bad_time_list, 'awc_id', ['doc_id', 'awc_name', 'block_name', 'district_name', 'state_name'])
 
 # summarize for each state
 state_summ_avrg = state_summ_df.reset_index()

@@ -34,10 +34,10 @@ output_dir = 'C:\\Users\\theism\\Documents\\Dimagi\\Results\\Form Submissions'
 
 # will download new files if you don't have them in your target_dir already
 # NOTE - if already have the output daily_forms_db, don't need the old data
-download_new = True
-download_start = pd.Timestamp('11-01-2017')
-download_stop = pd.Timestamp(date.today()) 
-#download_stop = pd.Timestamp('12-09-2017') 
+download_new = False
+download_start = pd.Timestamp('03-20-2017')
+#download_stop = pd.Timestamp(date.today()) 
+download_stop = pd.Timestamp('06-30-2017') 
 
 # will remove the last refresh_days of files and download them again, in case
 # all forms haven't been submitted for those days yet
@@ -52,16 +52,22 @@ recalc = False
 credential_path = r'C:\Users\theism\Documents\Dimagi\Admin\user_info.csv'
 
 # if only want a subset of data plotted
-trim_dates = False
-trim_start = pd.Timestamp('9-01-2017')
+trim_dates = True
+trim_start = pd.Timestamp('07-01-2017')
 # for today, put: date.today()
-trim_stop = pd.Timestamp('11-01-2017')
+trim_stop = pd.Timestamp('03-30-2018')
 
 # set states to plot
 real_state_list = ['Madhya Pradesh', 'Chhattisgarh',
                    'Andhra Pradesh', 'Bihar', 'Jharkhand',
                    'Rajasthan']
 #, 'Uttar Pradesh', 'Maharashtra']  
+
+# if want analysis for a certain region
+filter_by_state = False
+state_filter = 'Bihar'
+if filter_by_state:
+    logging.info('Filtering all data by: %s' % state_filter)
 
 # ------------- don't edit below here -----------------------------
 
@@ -100,10 +106,17 @@ else:
 # if recalc, lets refresh the location data too
 if recalc is True:
     gf.refresh_locations()
+    
+if trim_dates is True:
+    logging.info('Only look at data between %s and %s' % (trim_start, trim_stop))
+    file_dates = [pd.Timestamp(i[5:-4]) for i in file_list]
+    file_dates_slice = [i for i in file_dates if (i >= trim_start and i <= trim_stop)]
+    file_dates_str = pd.Series(file_dates_slice).dt.strftime('%m.%d.%Y').tolist()
+    file_list = ['icds.' + i + '.csv' for i in file_dates_str]
 
 logging.info('Starting scripts to analyze data...')
 
-location_columns = ['doc_id', 'state_name']
+location_columns = ['doc_id', 'awc_name', 'block_name', 'district_name', 'state_name']
 for data_file in file_list:
     logging.info('Seeing if %s is already in output' % data_file)
     file_date = data_file[5:-4]
@@ -120,6 +133,11 @@ for data_file in file_list:
         # add locations to data and set indices
         input_df = gf.add_locations(input_df, 'awc_id', location_columns)
         input_df = input_df.loc[(input_df['state_name'].isin(real_state_list))]
+        
+        # apply state filter if exists
+        if filter_by_state:
+            input_df = input_df.loc[input_df['state_name'] == state_filter]
+        
         input_df = input_df.set_index(['form_date', 'state_name'])
 
         # minimize data to just the counts
@@ -154,7 +172,7 @@ for data_file in file_list:
     else:
         logging.debug('Found %s in file already' % file_date)
 
-print('elapsed time: %s' % (datetime.now() - start_time))
+logging.info('elapsed time: %s' % (datetime.now() - start_time))
 # save file for later use - with state information
 output_file1 = os.path.join(output_dir, saved_output)
 forms_df.to_csv(output_file1, date_format='%m-%d-%Y')
@@ -185,7 +203,8 @@ plot_cats = {'form_pct': ['pse_pct', 'gmp_pct', 'thr_pct', 'home_visit_pct', 'du
              'form_detailed': ['add_household', 'add_person', 'add_pregnancy', 'bp', 'bp_tri1', 'bp_tri2', 'bp_tri3', 'delivery', 'pnc', 'ebf', 'cf', 'due_list_ccs', 'due_list_child'],
              'home_visits': ['bp', 'delivery', 'pnc', 'ebf', 'cf'],
              'bp_visits': ['bp_tri1', 'bp_tri2', 'bp_tri3'],
-             'due_list_visits': ['due_list_ccs', 'due_list_child']}
+             'due_list_visits': ['due_list_ccs', 'due_list_child'],
+             'per_aww': ['pse_per_aww', 'gmp_per_aww', 'thr_per_aww', 'home_visit_per_aww', 'due_list_per_aww', 'hh_mng_per_aww', 'total_per_aww']}
 
 # if only want to see certain time period
 if trim_dates is True:
@@ -325,6 +344,11 @@ plt.savefig('num_weekday_' + date.today().strftime('%Y-%m-%d') + '.png')
 
 # -------------------- submissions per state per worker -----------------------------
 
+
+### NOTE - haven't rewritten this section after taking into account num workers over time, rather
+# than just the latest total number of workers
+####
+
 # expected submissions per worker.  zero if varies by state/no requirement
 expected_nums = {'Andhra Pradesh':
                      {'pse': 25, 'gmp': 65, 'thr': 32,
@@ -427,6 +451,29 @@ f.suptitle('Expected Monthly Form Submissions from %s to %s' % (start.strftime('
 plt.subplots_adjust(wspace=0.3, hspace=0.3)
 plt.savefig('form_sub_vs_exp_' + date.today().strftime('%Y-%m-%d') + '.png')
 
+# ---------------- adding different way to calc avrg form submissions per day ---------------
+
+# forms_df has day, state, forms by type.  need to add num workers submitting on that day
+state_aww_by_day_in = pd.read_csv(r'C:\Users\theism\Documents\Dimagi\Results\User Activity\num_aww_by_state_2018-04-07.csv', index_col=0)
+state_aww_by_day = state_aww_by_day_in.T.stack()
+state_aww_by_day.index.names = ['form_date', 'state_name']
+state_aww_by_day.name = 'num_awws'
+state_aww_by_day = state_aww_by_day.reset_index()
+state_aww_by_day['form_date'] = pd.to_datetime(state_aww_by_day['form_date'])
+if trim_dates:
+    state_aww_by_day = state_aww_by_day.set_index('form_date').loc[trim_start:trim_stop]
+state_aww_by_day = state_aww_by_day.reset_index().set_index(['form_date', 'state_name'])
+
+# yikes.  finally add this to the dataframe.
+forms_df = pd.concat([forms_df, state_aww_by_day], axis=1)
+
+forms_per_aww_by_day = ff.divisor('per_aww', 'num_awws', forms_df[plot_cats['form_nums']+['total']+['num_awws']], multiplier=1)
+
+avrg_per_aww = pd.DataFrame()
+for state in real_state_list:
+    avrg_per_aww[state] = forms_per_aww_by_day.xs(state, level=1)[plot_cats['per_aww']].mean()
+avrg_per_aww = avrg_per_aww.T
+avrg_per_aww.loc['Average'] = avrg_per_aww.mean(axis=0)
 
 #-------------------- output some summary tables --------------------------
 
@@ -448,14 +495,15 @@ pct_form_summary = pct_form_summary[plot_cats['form_pct']]
 logging.info(pct_form_summary.round(decimals=1))
 
 # average form submission per day per worker
-avrg_sub_per_summary = mean_form_summary.join(state_index)
-cols = mean_form_summary.columns.tolist()
-avrg_sub_per_summary.loc['All States', 'num_workers'] = avrg_sub_per_summary.loc[:,'num_workers'].sum()
-for col in cols:
-    avrg_sub_per_summary[col + '_per_aww_per_day'] = avrg_sub_per_summary[col] / avrg_sub_per_summary['num_workers']
-avrg_sub_per_summary.loc['All States', 'num_workers'] = avrg_sub_per_summary.loc[:,'num_workers'].sum()
-avrg_sub_per_summary = avrg_sub_per_summary.drop(cols, axis=1)
-logging.info(avrg_sub_per_summary)
+#avrg_sub_per_summary = mean_form_summary.join(state_index)
+#cols = mean_form_summary.columns.tolist()
+#avrg_sub_per_summary.loc['All States', 'num_workers'] = avrg_sub_per_summary.loc[:,'num_workers'].sum()
+#for col in cols:
+#    avrg_sub_per_summary[col + '_per_aww_per_day'] = avrg_sub_per_summary[col] / avrg_sub_per_summary['num_workers']
+#avrg_sub_per_summary.loc['All States', 'num_workers'] = avrg_sub_per_summary.loc[:,'num_workers'].sum()
+#avrg_sub_per_summary = avrg_sub_per_summary.drop(cols, axis=1)
+#logging.info(avrg_sub_per_summary)
 
-summary_df = pd.concat([mean_form_summary, median_form_summary, pct_form_summary, avrg_sub_per_summary], axis=1)
+#summary_df = pd.concat([mean_form_summary, median_form_summary, pct_form_summary, avrg_sub_per_summary], axis=1)
+summary_df = pd.concat([mean_form_summary, median_form_summary, pct_form_summary, avrg_per_aww], axis=1)
 summary_df.to_csv('summary.csv')

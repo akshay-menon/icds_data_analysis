@@ -16,7 +16,7 @@ import time
 # Specify data location, regex to use on files, date columns that are dates
 # Future - consider a GUI to do this input better
 
-target_dir = (r'C:\Users\theism\Documents\Dimagi\Data\Case2')
+target_dir = (r'C:\Users\theism\Documents\Dimagi\Data\Person_Case')
 output_dir = (r'C:\Users\theism\Documents\Dimagi\Results\Date of Birth')
 
 # Practice Use Case on small dataset

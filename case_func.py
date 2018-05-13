@@ -362,8 +362,10 @@ def add_age_info(df, col_name='age_bracket', bin_type='brackets', relative_date=
                          '14-15 yrs', '15-16 yrs', '16-49 yrs', '49-99 yrs',
                          '99 yrs+']
         else: # defaults to standard buckets
-            bins = [-100*365.25, 0, 5*365.25, 15*365.25, 49*365.25, 99*365.25, 1000*365.25]
-            bin_names = ['<0 yrs', '0-5 yrs', '5-15 yrs', '15-49 yrs', '49-99 yrs', '99 yrs+']
+            bins = [-100*365.25, 0, 5*365.25, 11*365.25, 14*365.25, 49*365.25, 99*365.25, 1000*365.25]
+            bin_names = ['<0 yrs', '0-5 yrs', '5-11 yrs', '11-14 yrs', '14-49 yrs', '49-99 yrs', '99 yrs+']
+            #bins = [-100*365.25, 0, 5*365.25, 15*365.25, 49*365.25, 99*365.25, 1000*365.25]
+            #bin_names = ['<0 yrs', '0-5 yrs', '5-15 yrs', '15-49 yrs', '49-99 yrs', '99 yrs+']
         df[col_name] = pd.cut(df['age_days'], bins, labels=bin_names)
     else:
         logging.info('ERROR - could not find dob in columns and unable to \

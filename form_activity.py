@@ -17,7 +17,6 @@ import time
 from datetime import date
 import numpy as np
 from matplotlib import pyplot as plt
-import seaborn as sns
 
 # ----------------  USER EDITS -------------------------------
 # Specify data location, regex to use on files, date columns that are dates
@@ -28,14 +27,17 @@ output_dir = 'C:\\Users\\theism\\Documents\\Dimagi\\Results\\User Activity'
 
 # if only want to test with a subset of dates:
 start_date = pd.Timestamp('03-20-2017')
+#end_date = pd.Timestamp('03-30-2018') 
 #end_date = pd.Timestamp('04-10-2017')
 end_date = pd.Timestamp(date.today())  
 
 # will download new files if you don't have them in your target_dir already
 # NOTE - if already have the output daily_forms_db, don't need the old data
-download_new = False
-download_start = pd.Timestamp('03-20-2017')
-download_stop = pd.Timestamp(date.today())
+download_new = True
+download_start = start_date
+download_stop = end_date
+#download_start = pd.Timestamp('03-20-2017')
+#download_stop = pd.Timestamp(date.today())
 
 # will remove the last refresh_days of files and download them again, in case
 # all forms haven't been submitted for those days yet
@@ -97,6 +99,7 @@ if os.path.isfile(saved_file) is False:
     logging.info('Didnt find existing forms db file.  Creating a new one.')
 # save file already exists.  import and make sure index column in expected fmt
 else:
+    logging.info('Found db file - reading in...')
     forms_df = pd.read_csv(saved_file, header=0)
     forms_df = forms_df.set_index(['awc_id'])
     # get rid of locations,etc.  add back again once have added new data to recalc
@@ -379,6 +382,32 @@ plt.savefig('activity_pct_state_' + last_date.strftime('%Y-%m-%d') + '.png')
 
 state_summary_df.to_csv(os.path.join(output_dir, 'state_summary.csv'), date_format='%m-%d-%Y')
 state_summary_pct_df.to_csv(os.path.join(output_dir, 'state_pct_summary.csv'), date_format='%m-%d-%Y')
+
+# -------------------------------------------------------------
+# get num workers per state by day
+state_awws_df = pd.DataFrame()
+for state in real_state_list:
+    temp_df = activity_df[activity_df['state_name'] == state]
+    total_workers = temp_df.shape[0]
+    state_nums = total_workers - (temp_df[date_cols] == 'pre').sum(axis=0)
+    state_nums = state_nums.rename(state)
+    state_awws_df = state_awws_df.append(state_nums)
+state_awws_df.to_csv('num_aww_by_state_' + last_date.strftime('%Y-%m-%d') + '.csv')
+
+# find users that haven't been active at all...
+location_columns = ['doc_id', 'awc_name', 'awc_site_code', 'supervisor_name', 'block_name', 'district_name', 'state_name']
+location_file_dir = r'C:\Users\theism\Documents\Dimagi\Data\static-awc_location.csv'
+location_df = pd.read_csv(location_file_dir, index_col=location_columns[0], usecols=location_columns)
+loc_index = pd.Index(location_df.index)
+aww_form_index = pd.Index(activity_df.index)
+awwdiff = loc_index.difference(aww_form_index).values
+aww_no_forms = pd.DataFrame(awwdiff, columns=['awc_id'])
+aww_no_forms = gf.add_locations(aww_no_forms, 'awc_id', location_columns, False)
+aww_no_forms = aww_no_forms.set_index('awc_id')
+aww_no_forms = aww_no_forms.loc[(aww_no_forms['state_name'].isin(real_state_list))]
+aww_no_forms.to_csv('aww_w_no_forms_' + last_date.strftime('%Y-%m-%d') + '.csv')
+logging.info('Users from these states are registered but have not submitted a form between %s and %s' % (start_date, end_date))
+logging.info(aww_no_forms['state_name'].value_counts())
 
 
 logging.info(time.strftime('%X %x'))

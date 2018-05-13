@@ -27,6 +27,9 @@ case_data_regex = re.compile(r'cases_\d\d\d.csv')
 use_opened_cutoff = False
 opened_cutoff_date = pd.Timestamp('09-01-2017')
 
+# if you want to look at just one folder - kind of hacky...
+use_specific_folder = False
+specific_folder = 'person_phone_aadhar-bihar'
 # Practice Use Case on small dataset
 #target_dir = (r'C:\Users\theism\Documents\Dimagi\Data\person_phone_aadhar-ap-anantapur2')
 #output_dir = (r'C:\Users\theism\Documents\Dimagi\Data\person_phone_aadhar-ap-anantapur2\test')
@@ -38,6 +41,8 @@ gen_func.start_logging(output_dir)
 
 # identify all the states files to go through
 folder_list = os.listdir(target_dir)
+if use_specific_folder:
+    folder_list = specific_folder
 case_date_cols = ['opened_date', 'dob']
 
 # initialize outputs

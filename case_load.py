@@ -28,9 +28,9 @@ refresh_locations = True
 # data downloaded from https://www.icds-cas.gov.in/a/icds-cas/data/export/custom/daily_saved/
 # [DA] <task_type> - make sure to check 'date updated' to see when data was refreshed
 #case_types = ['ccs_record']
-add_person_cases = False
-#case_types = ['child_health', 'tasks', 'ccs_record', 'measurement', 'household']
-case_types = ['tasks']
+add_person_cases = True
+case_types = ['child_health', 'tasks', 'ccs_record', 'measurement', 'household']
+#case_types = ['tasks']
 init_case_est = {'child_health':200,
                  'tasks':250,
                  'ccs_record':150,
@@ -131,7 +131,7 @@ if add_person_cases:
     
     
     # add the person case data to the existing df
-    case_df = pd.concat([case_df, person_case_df], axis=1)
+    case_df = case_df.join(person_case_df)
     case_types.append('person')
 case_df = case_df.fillna(0)
     

@@ -96,6 +96,36 @@ def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None):
         raise
 
 
+def combine_csvs(directory, new_directory, filename, regex, date_cols=None, cols_to_use=None):
+    '''
+    Combine all csv files in directory to a single csv and saves to same directory.
+
+    Parameters
+    ----------
+    directory : string
+      Full path to directory with data files
+    new_directory : string
+      Full path to directory where you want to save the new file
+    regex : regex object
+      Regex used to specify filenames of desired csv files
+    filename: string
+      What you want to call your combined csv file
+    date_cols : list of strings
+      Import specific columns in datetime format (optional, defaults to None)
+    cols_to_use : list of string
+      Import a subset of columns (optional, defaults to None)
+
+    Returns
+    -------
+    output : pandas dataframe
+      Dataframe of combined csv files
+    '''
+    big_df = csv_files_to_df(directory, regex, date_cols, cols_to_use)
+    output_file = os.path.join(new_directory, filename) + '.csv'
+    big_df.to_csv(output_file)
+    logging.info('Saved output to %s' % output_file)
+
+    
 def add_locations(df, left_index_column=None, location_column_names=['doc_id',
                   'awc_name', 'block_name', 'district_name', 'state_name'],
                   refresh_loc=False):
@@ -112,6 +142,8 @@ def add_locations(df, left_index_column=None, location_column_names=['doc_id',
     location_column_names : list of strings
       Location columns to add.  (Optional, defaults to doc_id, awc_name,
       block_name, district_name, state_name).  
+    refresh_loc : boolean
+      Will update the location fixture with the latest information if True
 
     Returns
     -------
@@ -140,6 +172,54 @@ def add_locations(df, left_index_column=None, location_column_names=['doc_id',
                     location columns.  Looking in %s', location_file_dir)
        raise
     return df[desired_columns]
+
+
+def add_locations_by_username(df, location_column_names=['awc_site_code',
+                  'awc_name', 'block_name', 'district_name', 'state_name'],
+                  refresh_loc=False):
+    '''
+    Similar to add_locations, but for forms where location_id isn't available
+    but 'username' is.  Takes username and adds location columns to an existing
+    for locations (ie-awc/block/district/etc).
+
+    Parameters
+    ----------
+    df : pandas dataframe
+      Dataframe to add location columns to
+    location_column_names : list of strings
+      Location columns to add.  (Optional, defaults to awc_site_code, awc_name,
+      block_name, district_name, state_name).  NEED awc_site_code to match on
+      username
+    refresh_loc : boolean
+      Will update the location fixture with the latest information if True
+
+    Returns
+    -------
+    output : pandas dataframe
+      Dataframe with added location columns.
+    '''
+    if refresh_loc == True:
+        refresh_locations()
+    try:
+        orig_df_columns = df.columns.tolist()
+        if location_column_names in orig_df_columns:
+            logging.info('WARNING - column names to add already exist')
+        location_df = pd.read_csv(location_file_dir, usecols=location_column_names)
+        if 'awc_site_code' not in location_column_names:
+            logging.info('WARNING - awc_site_code required in location column list')
+        location_df['awc_site_code'] = location_df['awc_site_code'].astype(str)
+        
+        # format the username appropriately, dropping any leading zeros
+        df['username'] = df['username'].astype(str)
+        df['username_fmt'] = df['username'].apply(lambda x: x[1:] if x[0] == '0' else x)
+
+        # add location information for each user        
+        output_df = pd.merge(df, location_df, left_on='username_fmt', right_on='awc_site_code', how='left')
+    except:
+       logging.info('ERROR - unable to find location file, not adding '
+                    'location columns.  Looking in %s', location_file_dir)
+       raise
+    return output_df
 
 
 def num_by_location(column_name, filter_name):
@@ -392,5 +472,5 @@ def renumber_files(directory, start_num, basename):
     for f in files:
         os.rename(f, basename + str(num) + '.csv')
         num += 1
-    logging.info('Renumbering %i files in %s' % (num - start_num, directory))
+    print('Renumbering %i files in %s' % (num - start_num, directory))
     return
