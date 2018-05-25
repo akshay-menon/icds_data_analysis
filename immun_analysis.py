@@ -46,7 +46,7 @@ immun_buffer = 7
 
 # run child and pregnancy analysis?
 run_child = True
-run_preg = True
+run_preg = False
 
 # what file type in folders to get
 case_data_regex = re.compile(r'Cases_\d\d\d.csv')
@@ -147,7 +147,8 @@ if run_child:
     child_tasks_df = tasks_in_df[(tasks_in_df['closed'] == False) & (tasks_in_df['tasks_type'] == 'child')]
     num_open_child = child_tasks_df.shape[0]
     logging.info('Analyzing %i open child task cases' % num_open_child)
-    
+
+#TODO need to split large dob files if  1GB into multiple files    
     # link DOB
     logging.info('Collecting date of birth information for each child case...')
     if download_dob:
@@ -306,7 +307,7 @@ if run_child:
     onpath_summary_df = summary_df.drop(['not_due_yet', 'not_on_path'])
     onpath_summary_pct_df = onpath_summary_df / onpath_summary_df.sum() * 100
     summary_df.loc['Total'] = summary_df.sum()
-    summary_df = summary_df.append(onpath_summary_pct_df)
+    # TODO - figure out this line is needed or not - summary_df = summary_df.append(onpath_summary_pct_df)
     
     # output a summary file
     summary_df.loc['received'] = summary_df.loc['got_early'] + summary_df.loc['got_late'] + summary_df.loc['got_on_time'] + summary_df.loc['got_in_buffer']
@@ -394,7 +395,7 @@ if run_preg:
 
 
 
-
+'''
 
 want to plot a heat map, where one axis is immun name, other is coding
 #--------------------------------
@@ -489,3 +490,4 @@ nopenta_one_yr_immuns = ['BCG (immuns)',
 child_w_task_df['date_since_mod'] = (child_w_task_df['last_modified_date'] - pd.Timestamp('1-1-1970')) / np.timedelta64(1, 'D')
 child_w_task_df['days_since_mod'] = child_w_task_df['date_since_mod'] - child_w_task_df['days_since_dob']
 
+'''
