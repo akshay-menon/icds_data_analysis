@@ -17,7 +17,12 @@ import requests, zipfile
 from io import StringIO
 import shutil
 
-location_file_dir = r'C:\Users\theism\Documents\Dimagi\Data\static-awc_location.csv'
+# Useful paths
+ROOT_FOLDER = os.path.dirname(os.path.realpath(__file__))
+DATA_DIR = ROOT_FOLDER + '/../Data'
+OUTPUT_DIR = ROOT_FOLDER + '/../Results'
+
+location_file_dir = DATA_DIR + '/static-awc_location.csv'
 
 def data_file_list(directory, regex):
     '''
