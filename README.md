@@ -4,7 +4,9 @@ This text doc explains the structure of the python scripts being created to anal
 
 Note - These scripts reflect local paths to data downloaded and stored on the laptop used for the requisite analysis.  You may run into errors if you run the scripts and haven’t corrected the paths to data files, directories for log files, or location fixtures used to map awc/block/district/state to a given user or case.
 
-Scripts are written using Python 2.7
+We are working to replace the hardcoded paths. To do that, we have created a settings.py file that is not stored in the repository. A sample settings file is made available for using relative directories.
+
+Scripts are written using Python 2.7, though we are working to make them compatible with Python 2.7 and Python 3.
 
 To use these scripts, search for the analysis or the name of the script in question to see a basic overview.  In general, there are supporting scripts with functions, either generic or analysis specific.  There are main scripts to run the analysis that call the supporting scripts.  In the main scripts, there is a ‘user edit’ section at the top to specify paths to data folders for input data and output results.  In some scripts, there are two sets of paths, one for a small test dataset and one for a full analysis, one of which is always commented out.
 

@@ -16,11 +16,7 @@ from requests.auth import HTTPBasicAuth
 import requests, zipfile
 from io import StringIO
 import shutil
-
-# Useful paths
-ROOT_FOLDER = os.path.dirname(os.path.realpath(__file__))
-DATA_DIR = ROOT_FOLDER + '/../Data'
-OUTPUT_DIR = ROOT_FOLDER + '/../Results'
+from settings import DATA_DIR, OUTPUT_DIR
 
 location_file_dir = DATA_DIR + '/static-awc_location.csv'
 
