@@ -13,7 +13,8 @@ import logging.config
 import datetime
 import numpy as np
 from requests.auth import HTTPBasicAuth
-import requests, zipfile, StringIO
+import requests, zipfile
+from io import StringIO
 import shutil
 
 location_file_dir = r'C:\Users\theism\Documents\Dimagi\Data\static-awc_location.csv'
