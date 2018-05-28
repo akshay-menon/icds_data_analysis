@@ -15,9 +15,9 @@ import logging
 
 # input directories and information
 # data folder format - daily export name, date zip compiled on hq
-data_dir = 'C:\\Users\\theism\\Documents\\Dimagi\\Data\\forms\\[DA] Delivery - 30apr18'
+data_dir = gf.DATA_DIR + '/forms/[DA] Delivery - 30apr18'
 data_regex = re.compile(r'Forms_\d\d\d.csv')
-output_dir = 'C:\\Users\\theism\\Documents\\Dimagi\\Results\\Delivery forms'
+output_dir = gf.OUTPUT_DIR + '/Delivery forms'
 
 # states we care about for this analysis (used to get rid of test users)
 real_state_list = ['Madhya Pradesh', 'Chhattisgarh',
