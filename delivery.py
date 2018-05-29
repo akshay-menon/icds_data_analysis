@@ -48,14 +48,18 @@ logging.info('%i different users submitted this form' % del_df['awc_name'].nuniq
 logging.info('%.2f average forms per user' % del_df['awc_name'].value_counts().mean())
 
 logging.info(del_df['form.has_delivered'].value_counts(dropna=False))
-have_del_df = del_df[del_df['form.has_delivered'] == 'yes']
+# Just to be explicit with Pandas
+have_del_df = del_df[del_df['form.has_delivered'] == 'yes'].copy(False)
 logging.info(have_del_df['form.where_born'].value_counts(dropna=False))
 logging.info(have_del_df['form.delivery_nature'].value_counts(dropna=False))
 have_del_df['home_delivery'] = (have_del_df['form.where_born'] == 'home')
+have_del_df['hospital_delivery'] = (have_del_df['form.where_born'] == 'hospital')
+have_del_df['caesarean_delivery'] = (have_del_df['form.delivery_nature'] == 'caesarean')
 have_del_df['delivery'] = (have_del_df['form.has_delivered'] == 'yes')
 
 have_del_block_df = pd.DataFrame()
 have_del_block_df['number home deliveries in block'] = have_del_df.groupby(['block_name', 'district_name', 'state_name'])['home_delivery'].sum()
+have_del_block_df['number hospital deliveries in block'] = have_del_df.groupby(['block_name', 'district_name', 'state_name'])['hospital_delivery'].sum()
+have_del_block_df['number caesarean deliveries in block'] = have_del_df.groupby(['block_name', 'district_name', 'state_name'])['caesarean_delivery'].sum()
 have_del_block_df['total deliveries in block'] = have_del_df.groupby(['block_name', 'district_name', 'state_name'])['delivery'].sum()
 have_del_block_df.to_csv('block_delivery_test.csv')
-        
