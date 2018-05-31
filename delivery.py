@@ -35,7 +35,7 @@ gf.start_logging(output_dir)
 os.chdir(output_dir)
 
 # combine forms into single dataset
-input_df = gf.csv_files_to_df(data_dir, data_regex, date_cols=date_fmt_cols, cols_to_use=indicator_list)
+input_df = gf.forms_to_df(data_dir, data_regex, date_cols=date_fmt_cols, cols_to_use=indicator_list)
 logging.info('raw forms: %i' % input_df.shape[0])
 input_df = gf.add_locations_by_username(input_df)
 logging.info('raw forms after add locations: %i' % input_df.shape[0])

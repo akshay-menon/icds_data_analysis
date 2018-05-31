@@ -16,6 +16,7 @@ from requests.auth import HTTPBasicAuth
 import requests, zipfile
 from io import StringIO
 import shutil
+import settings
 from settings import DATA_DIR, OUTPUT_DIR
 
 location_file_dir = DATA_DIR + '/static-awc_location.csv'
@@ -49,8 +50,93 @@ def data_file_list(directory, regex):
     os.chdir(orig_dir)
     return output
 
+def _hash_from_filesize(directory, regex):
+  '''
+  Return a hash of the summed filesizes of the files in the directory.
+  This is used as a rough metric to see if anything has changed in
+  the directory.
 
-def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None):
+  NOTE: right now there is no hash. It just returns the summed filesizes,
+  which should be good enough for our purposes
+
+  Parameters
+  ----------
+  directory : string
+    Full path to directory
+
+  regex : regex object
+    Regex used to specify filenames of desired csv files
+  
+  Returns
+  -------
+  output : string
+    hash for this set of files
+  '''
+  try:
+    file_list = data_file_list(directory, regex)
+    orig_dir = os.getcwd()
+    os.chdir(directory)
+    # append frames to a list of frames, then concat into one large frame
+    sizes = [os.path.getsize(f) for f in file_list]
+    os.chdir(orig_dir)
+    
+    return str(sum(sizes))
+  except Exception as err:
+    logging.error('An exception happened: ' + str(err))
+    os.chdir(orig_dir)
+    raise
+
+
+def forms_to_df(directory, regex, date_cols=None, cols_to_use=None):
+  '''
+  Load in form data to a single dataframe. This is an optimization
+  function that checks for an existing hd5 file and hash before
+  passing off the real work to csv_files_to_df.
+
+  Parameters
+  ----------
+  directory : string
+    Full path to directory
+
+  regex : regex object
+    Regex used to specify filenames of desired csv files
+
+  date_cols : list of strings
+    Import specific columns in datetime format (optional, defaults to None)
+
+  cols_to_use : list of string
+    Import a subset of columns (optional, defaults to None)
+
+  Returns
+  -------
+  output : pandas dataframe
+    Dataframe for these forms
+  '''
+  try:
+    orig_dir = os.getcwd()
+    os.chdir(directory)
+    current_hash = _hash_from_filesize(directory, regex)
+    hash_file = open(settings.HASH_FILE, 'r')
+    hash_value = hash_file.read()
+
+    assert current_hash == hash_value
+
+    df = pd.read_hdf(settings.HDF_FILE,
+                      settings.HDF_KEY, 
+                      usecols=cols_to_use,
+                      parse_dates=date_cols,
+                      infer_datetime_format=True,
+                      low_memory=False)
+    os.chdir(orig_dir)
+    return df
+  except FileNotFoundError as ex:
+    logging.info('HDF5 or hash file not found in "%s", loading from CSV files. Details:\n%s' % (directory, ex))
+  except AssertionError as ex:
+    logging.info('New hash for files in "%s" has changed, reloading from CSV files' % (directory))
+  
+  return csv_files_to_df(directory,regex,date_cols=date_cols, cols_to_use=cols_to_use,save_hdf=True)
+
+def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None, save_hdf=False):
     '''
     Combine all csv files in directory to a single dataframe.
 
@@ -67,6 +153,9 @@ def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None):
 
     cols_to_use : list of string
       Import a subset of columns (optional, defaults to None)
+    
+    save_hdf : boolean
+      Whether we should save a hash and hd5 export of the final dataframe
 
     Returns
     -------
@@ -91,6 +180,14 @@ def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None):
                           (data_file, len(frame.index)))
         df = pd.concat(frames, ignore_index=True, copy=False)
         logging.info('Total combined length is %i rows\n' % len(df.index))
+
+        if save_hdf:
+          current_hash = _hash_from_filesize(directory, regex)  
+          df.to_hdf(settings.HDF_FILE, settings.HDF_KEY)
+          f = open(settings.HASH_FILE, 'w')
+          f.write(current_hash)
+          f.close()
+
         os.chdir(orig_dir)
         return df
     except Exception as err:
