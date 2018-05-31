@@ -6,5 +6,4 @@ DATA_DIR = ROOT_FOLDER + '/../Data'
 OUTPUT_DIR = ROOT_FOLDER + '/../Results'
 
 HASH_FILE = 'files.hash'
-HDF_FILE = 'raw_data.hdf'
 HDF_KEY = 'table'

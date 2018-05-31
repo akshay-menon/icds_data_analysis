@@ -16,6 +16,7 @@ from requests.auth import HTTPBasicAuth
 import requests, zipfile
 from io import StringIO
 import shutil
+import hashlib
 import settings
 from settings import DATA_DIR, OUTPUT_DIR
 
@@ -50,14 +51,17 @@ def data_file_list(directory, regex):
     os.chdir(orig_dir)
     return output
 
-def _hash_from_filesize(directory, regex):
+def _hash_from_filesize_and_cols(directory, regex, cols_to_use):
   '''
   Return a hash of the summed filesizes of the files in the directory.
   This is used as a rough metric to see if anything has changed in
-  the directory.
+  the directory. Also included are the fields to extract.
 
   NOTE: right now there is no hash. It just returns the summed filesizes,
   which should be good enough for our purposes
+
+  NOTE: creating a different HDF for each 'view' of the data leads to further
+  duplication of data, but for now that's acceptable.
 
   Parameters
   ----------
@@ -76,11 +80,13 @@ def _hash_from_filesize(directory, regex):
     file_list = data_file_list(directory, regex)
     orig_dir = os.getcwd()
     os.chdir(directory)
-    # append frames to a list of frames, then concat into one large frame
     sizes = [os.path.getsize(f) for f in file_list]
     os.chdir(orig_dir)
     
-    return str(sum(sizes))
+    sorted_cols = list(cols_to_use) if cols_to_use else []
+    sorted_cols.sort()
+    return hashlib.sha1(
+      (str(sum(sizes)) + ''.join(sorted_cols)).encode()).hexdigest()
   except Exception as err:
     logging.error('An exception happened: ' + str(err))
     os.chdir(orig_dir)
@@ -115,13 +121,14 @@ def forms_to_df(directory, regex, date_cols=None, cols_to_use=None):
   try:
     orig_dir = os.getcwd()
     os.chdir(directory)
-    current_hash = _hash_from_filesize(directory, regex)
+    current_hash = _hash_from_filesize_and_cols(directory, regex, cols_to_use=cols_to_use)
     hash_file = open(settings.HASH_FILE, 'r')
-    hash_value = hash_file.read()
+    hash_values = hash_file.readlines()
 
-    assert current_hash == hash_value
+    assert current_hash+'.hdf\n' in hash_values
 
-    df = pd.read_hdf(settings.HDF_FILE,
+    logging.info('Loading cached data from %s.hdf' % (current_hash))
+    df = pd.read_hdf('%s.hdf' % (current_hash),
                       settings.HDF_KEY, 
                       usecols=cols_to_use,
                       parse_dates=date_cols,
@@ -182,10 +189,10 @@ def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None, save_hdf
         logging.info('Total combined length is %i rows\n' % len(df.index))
 
         if save_hdf:
-          current_hash = _hash_from_filesize(directory, regex)  
-          df.to_hdf(settings.HDF_FILE, settings.HDF_KEY)
-          f = open(settings.HASH_FILE, 'w')
-          f.write(current_hash)
+          current_hash = _hash_from_filesize_and_cols(directory, regex, cols_to_use)  
+          df.to_hdf('%s.hdf' % (current_hash), settings.HDF_KEY)
+          f = open(settings.HASH_FILE, 'a')
+          f.write('%s.hdf\n' % (current_hash))
           f.close()
 
         os.chdir(orig_dir)
