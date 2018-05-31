@@ -1,5 +1,4 @@
 settings.py
 *.csv
 *.pyc
-*.pyc
 .vscode
