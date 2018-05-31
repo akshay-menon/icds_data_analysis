@@ -89,4 +89,11 @@ have_del_block_df['total delivery in block'] = have_del_df.groupby(locations)['d
 for f in fields:
     have_del_block_df = _process_metric(have_del_block_df, f, totalname='delivery')
 
+for f in fields:
+    for loc in locations[1:]:
+        new_col = '%s delta from %s' % (f, loc[:-5])
+        start_col = '%s %s pct' % (f, locations[0][:-5])
+        end_col = '%s %s pct' % (f, loc[:-5])
+        have_del_block_df[new_col] = have_del_block_df[start_col] - have_del_block_df[end_col]
+
 have_del_block_df.to_csv('block_delivery_test2.csv')
