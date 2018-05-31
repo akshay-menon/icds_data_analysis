@@ -53,13 +53,40 @@ have_del_df = del_df[del_df['form.has_delivered'] == 'yes'].copy(False)
 logging.info(have_del_df['form.where_born'].value_counts(dropna=False))
 logging.info(have_del_df['form.delivery_nature'].value_counts(dropna=False))
 have_del_df['home_delivery'] = (have_del_df['form.where_born'] == 'home')
+have_del_df['transit_delivery'] = (have_del_df['form.where_born'] == 'transit')
 have_del_df['hospital_delivery'] = (have_del_df['form.where_born'] == 'hospital')
 have_del_df['caesarean_delivery'] = (have_del_df['form.delivery_nature'] == 'caesarean')
 have_del_df['delivery'] = (have_del_df['form.has_delivered'] == 'yes')
 
+def _process_metric(df, col, totalname=''):
+    total_col = 'total %s in block' % (totalname)
+    sum_col = 'number %s in block' % (col)
+    locations = ['block_name', 'district_name', 'state_name']
+    count = 0
+    for location in locations:
+        pct_col = '%s %s pct' % (col, location[:-5])
+        loc = locations[count:]
+        new_agg = (df.groupby(loc)[sum_col].sum() / df.groupby(loc)[total_col].sum()).reset_index()
+        new_agg.columns = loc + [pct_col]
+        df = pd.merge(df, new_agg, how='left', on=loc)
+        count = count + 1
+    
+    return df
+
 have_del_block_df = pd.DataFrame()
-have_del_block_df['number home deliveries in block'] = have_del_df.groupby(['block_name', 'district_name', 'state_name'])['home_delivery'].sum()
-have_del_block_df['number hospital deliveries in block'] = have_del_df.groupby(['block_name', 'district_name', 'state_name'])['hospital_delivery'].sum()
-have_del_block_df['number caesarean deliveries in block'] = have_del_df.groupby(['block_name', 'district_name', 'state_name'])['caesarean_delivery'].sum()
-have_del_block_df['total deliveries in block'] = have_del_df.groupby(['block_name', 'district_name', 'state_name'])['delivery'].sum()
-have_del_block_df.to_csv('block_delivery_test.csv')
+
+locations = ['block_name', 'district_name', 'state_name']
+fields = ['caesarean_delivery','home_delivery','transit_delivery','hospital_delivery']
+
+# aggregate each field by block
+for f in fields:
+    new_col = 'number %s in block' % (f)
+    have_del_block_df[new_col] = have_del_df.groupby(locations)[f].sum()
+
+have_del_block_df['total delivery in block'] = have_del_df.groupby(locations)['delivery'].sum()
+
+# for each field, calculate the pct for each location aggregator
+for f in fields:
+    have_del_block_df = _process_metric(have_del_block_df, f, totalname='delivery')
+
+have_del_block_df.to_csv('block_delivery_test2.csv')
