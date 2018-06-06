@@ -63,8 +63,8 @@ have_del_df['delivery'] = (have_del_df['form.has_delivered'] == 'yes')
 # First group-by location, then resample the datetime and sum the columns accordingly.
 # Missing values get a zero
 full_set = have_del_df.groupby(locations).resample('M', on='completed_time').sum().unstack().fillna(0)
-full_set['home_delivery'].reset_index().to_csv('monthly_home_deliveries.csv')
-full_set['hospital_delivery'].reset_index().to_csv('monthly_hospital_deliveries.csv')
-full_set['caesarean_delivery'].reset_index().to_csv('monthly_caesarean_deliveries.csv')
+full_set['home_delivery'].to_csv('monthly_home_deliveries.csv')
+full_set['hospital_delivery'].to_csv('monthly_hospital_deliveries.csv')
+full_set['caesarean_delivery'].to_csv('monthly_caesarean_deliveries.csv')
 
-full_set['delivery'].reset_index().to_csv('monthly_total_deliveries.csv')
+full_set['delivery'].to_csv('monthly_total_deliveries.csv')
