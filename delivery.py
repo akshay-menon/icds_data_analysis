@@ -23,11 +23,15 @@ output_dir = gf.OUTPUT_DIR + '/Delivery forms'
 real_state_list = ['Madhya Pradesh', 'Chhattisgarh',
                    'Andhra Pradesh', 'Bihar', 'Jharkhand',
                    'Rajasthan']
-#, 'Uttar Pradesh', 'Maharashtra'] 
+#, 'Uttar Pradesh', 'Maharashtra']
 
 # if datasets get too big, can only choose certain variables to pull from the form
 indicator_list = ['formid', 'username', 'form.has_delivered', 'form.where_born', 'form.which_hospital', 'form.delivery_nature']
 date_fmt_cols = []
+
+# specific for deliveries
+locations = ['block_name', 'district_name', 'state_name']
+fields = ['caesarean_delivery','home_delivery','transit_delivery','hospital_delivery']
 ## ------------- don't edit below here -----------------------------
 
 # start logging
@@ -58,10 +62,9 @@ have_del_df['hospital_delivery'] = (have_del_df['form.where_born'] == 'hospital'
 have_del_df['caesarean_delivery'] = (have_del_df['form.delivery_nature'] == 'caesarean')
 have_del_df['delivery'] = (have_del_df['form.has_delivered'] == 'yes')
 
-def _process_metric(df, col, totalname=''):
+def _process_metric(df, col, locations, totalname=''):
     total_col = 'total %s in block' % (totalname)
     sum_col = 'number %s in block' % (col)
-    locations = ['block_name', 'district_name', 'state_name']
     count = 0
     for location in locations:
         pct_col = '%s %s pct' % (col, location[:-5])
@@ -70,13 +73,10 @@ def _process_metric(df, col, totalname=''):
         new_agg.columns = loc + [pct_col]
         df = pd.merge(df, new_agg, how='left', on=loc)
         count = count + 1
-    
+
     return df
 
 have_del_block_df = pd.DataFrame()
-
-locations = ['block_name', 'district_name', 'state_name']
-fields = ['caesarean_delivery','home_delivery','transit_delivery','hospital_delivery']
 
 # aggregate each field by block
 for f in fields:
@@ -87,7 +87,7 @@ have_del_block_df['total delivery in block'] = have_del_df.groupby(locations)['d
 
 # for each field, calculate the pct for each location aggregator
 for f in fields:
-    have_del_block_df = _process_metric(have_del_block_df, f, totalname='delivery')
+    have_del_block_df = _process_metric(have_del_block_df, f, locations, totalname='delivery')
 
 for f in fields:
     for loc in locations[1:]:
@@ -96,4 +96,18 @@ for f in fields:
         end_col = '%s %s pct' % (f, loc[:-5])
         have_del_block_df[new_col] = have_del_block_df[start_col] - have_del_block_df[end_col]
 
-have_del_block_df.to_csv('block_delivery_test2.csv')
+
+def _col_names_by_metric(col, locations, totalname):
+    cols = ['total %s in block' % (totalname)]
+    cols.append('number %s in block' % (col))
+    for location in locations:
+        cols.append('%s %s pct' % (col, location[:-5]))
+    for loc in locations[1:]:
+        cols.append('%s delta from %s' % (col, loc[:-5]))
+    return cols
+
+# each indicator gets its own file
+have_del_block_df[locations + _col_names_by_metric('home_delivery', locations, 'delivery')].to_csv('overall_home_deliveries.csv')
+have_del_block_df[locations + _col_names_by_metric('hospital_delivery', locations, 'delivery')].to_csv('overall_hospital_deliveries.csv')
+have_del_block_df[locations + _col_names_by_metric('caesarean_delivery', locations, 'delivery')].to_csv('overall_caesarean_deliveries.csv')
+have_del_block_df.to_csv('delivery_full.csv')
