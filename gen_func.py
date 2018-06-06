@@ -11,10 +11,10 @@ import pandas as pd
 import logging
 import logging.config
 import datetime
-import numpy as np
 from requests.auth import HTTPBasicAuth
 import requests, zipfile, StringIO
 import shutil
+from dateutil.parser import parse
 
 location_file_dir = r'C:\Users\theism\Documents\Dimagi\Data\static-awc_location.csv'
 
@@ -125,7 +125,65 @@ def combine_csvs(directory, new_directory, filename, regex, date_cols=None, cols
     big_df.to_csv(output_file)
     logging.info('Saved output to %s' % output_file)
 
+
+# hat tip: https://gist.github.com/jrivero/1085501
+def split_csvs(filehandler, delimiter=',', row_limit=10000, 
+    output_name_template='output_%s.csv', output_path='.', keep_headers=True):
+    """
+    Splits a CSV file into multiple pieces.
     
+    A quick bastardization of the Python CSV library.
+    Arguments:
+        `row_limit`: The number of rows you want in each output file. 10,000 by default.
+        `output_name_template`: A %s-style template for the numbered output files.
+        `output_path`: Where to stick the output files.
+        `keep_headers`: Whether or not to print the headers in each output file.
+    Example usage:
+    
+        >> from toolbox import csv_splitter;
+        >> csv_splitter.split_csvs(open('/home/ben/input.csv', 'r'));
+    
+    """
+    import csv
+    reader = csv.reader(filehandler, delimiter=delimiter)
+    current_piece = 1
+    current_out_path = os.path.join(
+         output_path,
+         output_name_template  % current_piece
+    )
+    current_out_writer = csv.writer(open(current_out_path, 'w'), delimiter=delimiter)
+    current_limit = row_limit
+    if keep_headers:
+        headers = reader.next()
+        current_out_writer.writerow(headers)
+    for i, row in enumerate(reader):
+        if i + 1 > current_limit:
+            current_piece += 1
+            current_limit = row_limit * current_piece
+            current_out_path = os.path.join(
+               output_path,
+               output_name_template  % current_piece
+            )
+            current_out_writer = csv.writer(open(current_out_path, 'w'), delimiter=delimiter)
+            if keep_headers:
+                current_out_writer.writerow(headers)
+        current_out_writer.writerow(row)
+
+
+def find_and_split_csvs(directory, file_limit=1000000000):
+    logging.info('Testing for csv files larger than %i bytes' % file_limit)
+    orig_dir = os.getcwd()
+    os.chdir(directory)
+    file_list = os.listdir(directory)
+    for myfile in file_list:
+        test_file = os.path.join(directory, myfile)
+        if os.path.getsize(test_file) > file_limit:
+            logging.info('%s exceeds limit.  Splitting file' % test_file)
+            split_csvs(open(test_file), row_limit=1000000, output_name_template = myfile[:-4] + '%s.csv')
+    os.chdir(orig_dir)
+    return
+
+
 def add_locations(df, left_index_column=None, location_column_names=['doc_id',
                   'awc_name', 'block_name', 'district_name', 'state_name'],
                   refresh_loc=False):
@@ -474,3 +532,12 @@ def renumber_files(directory, start_num, basename):
         num += 1
     print('Renumbering %i files in %s' % (num - start_num, directory))
     return
+
+
+def is_date(string):
+    '''Will analyze a string to assess if it is a date or not.  If yes, returns True, if not, False'''
+    try: 
+        parse(string)
+        return True
+    except ValueError:
+        return False

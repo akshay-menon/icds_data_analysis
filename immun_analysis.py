@@ -10,6 +10,9 @@ import re
 import os
 import pandas as pd
 import numpy as np
+from itertools import cycle, islice
+import matplotlib.pyplot as plt
+from dateutil.parser import parse
 
 def see_if_on_sched(date_in, immun_buffer):
     if np.isnan(date_in):
@@ -22,18 +25,25 @@ def see_if_on_sched(date_in, immun_buffer):
         return 'got_on_time'
     else:
         return 'got_in_buffer'
+    
+def is_date(string):
+    try: 
+        parse(string)
+        return True
+    except ValueError:
+        return False
 
     
 # ----------------  USER EDITS -------------------------------
-# date data was downloaded (can probably get this from file in a better way...)
-data_date = start_date = pd.Timestamp('02-13-2018')        
+# download date - this sets relative age for analysis
+data_date = pd.Timestamp('05-29-2018')
 
 # define directories
 data_dir = r'C:\Users\theism\Documents\Dimagi\Data\case_types'
 output_dir = r'C:\Users\theism\Documents\Dimagi\Results\Immuns'
 dob_dir = r'C:\Users\theism\Documents\Dimagi\Data\child_dob'
 
-testing = True
+testing = False
 
 # refresh locations?
 refresh_locations = False
@@ -148,7 +158,6 @@ if run_child:
     num_open_child = child_tasks_df.shape[0]
     logging.info('Analyzing %i open child task cases' % num_open_child)
 
-#TODO need to split large dob files if  1GB into multiple files    
     # link DOB
     logging.info('Collecting date of birth information for each child case...')
     if download_dob:
@@ -161,40 +170,76 @@ if run_child:
     dob_use_cols = ['doc_id', 'open_child_1yr_immun_complete', 'dob',
                     'date_turns_one_yr', 'open_child_count', 'is_migrated', 
                     'is_availing']
-    dob_data_regex = re.compile(r'static-icds-cas-static-tasks_cases_\d.csv')
+    dob_data_regex = re.compile(r'static-icds-cas-static-tasks_cases_\d+.csv')
+    # know these files can get big.  split larger csvs.  Eventually wrap this into other function
+    gf.find_and_split_csvs(dob_dir)
     child_dob_df = gf.csv_files_to_df(dob_dir, dob_data_regex, dob_date_cols, dob_use_cols)
     child_dob_df = child_dob_df.set_index('doc_id')
     logging.info('Merging dob info with immunization data...')
     child_tasks_df = pd.merge(child_tasks_df, child_dob_df, left_on='caseid',
                               right_index=True, how='left')
-        
-    # look at information about who gets what immuns (but is all kids regardless age)
-    logging.info('Pct distribution of all immunizations:')
-    logging.info(child_tasks_df[immun_list].count(axis=0) / num_open_child * 100.)    
+    child_tasks_df['num_immuns'] = child_tasks_df[immun_list].count(axis=1)
+    
+    # wanted to use the below, but due to incorrect phone times setting this date, we need to manually set it
+    #data_date = child_tasks_df['last_modified_date'].max()
+    logging.info('setting data date as max last modified date.  this determines relative age to dob.: %s' % data_date)
     child_tasks_df['age_days'] = (data_date - child_tasks_df['dob']) / np.timedelta64(1, 'D')
     child_tasks_df['dob_unix_days'] = (child_tasks_df['dob'] - pd.Timestamp('1-1-1970')) / np.timedelta64(1, 'D')
-    
-    child_tasks_df['num_immuns'] = child_tasks_df[immun_list].count(axis=1)
-    logging.info('Pct child tasks with at least one immun:')
-    child_w_task_df = child_tasks_df[child_tasks_df['num_immuns'] > 0]
-    num_child_w_1plus_task = child_w_task_df.shape[0]
-    logging.info(num_child_w_1plus_task * 100. / num_open_child)
-    
+
+    # look at information about who gets what immuns (but is all kids regardless age)      
     logging.info('Median age of child (in yrs): %.1f' % (child_tasks_df['age_days'].median() / 365.25))
     logging.info('Median number of immunizations: %.1f' % child_tasks_df['num_immuns'].median())
     logging.info('Mean number of immunizations: %.1f' % child_tasks_df['num_immuns'].mean())
+    logging.info('Pct distribution of immunizations - top 5:')
+    immun_out = pd.DataFrame()
+    immun_dist_pct = child_tasks_df[immun_list].count(axis=0) / num_open_child * 100.
+    immun_out = immun_dist_pct
+    logging.info(immun_dist_pct.sort_values(ascending=False)[0:5])
+    for state in real_state_list:
+        logging.info(state)
+        temp = child_tasks_df[child_tasks_df['state_name'] == state]
+        temp_num_open_child = temp.shape[0]
+        temp_immun_dist_pct = temp[immun_list].count(axis=0) / temp_num_open_child * 100.
+        #logging.info(temp_immun_dist_pct.sort_values(ascending=False)[0:5])
+        immun_out = pd.concat([immun_out, temp_immun_dist_pct.rename(state)], axis=1)
+    
+    immun_out.to_csv('immun_pcts.csv')
+    
+    # children with at least one immun
+    logging.info('Pct child tasks with at least one immun:')
+    child_w_task_df = child_tasks_df[child_tasks_df['num_immuns'] > 0]
+    num_child_w_1plus_task = child_w_task_df.shape[0]
+    logging.info(num_child_w_1plus_task * 100. / num_open_child)    
     logging.info('Median age of child w/ at least one immun (in yrs): %.1f' % (child_w_task_df['age_days'].median() / 365.25))
     logging.info('Median number of immunizations w/ at least one immun: %.1f' % child_w_task_df['num_immuns'].median())
     logging.info('Mean number of immunizations w/ at least one immun: %.1f' % child_w_task_df['num_immuns'].mean())
     
-    # children are at least one year of age
-    num_child_over_one_yr = (child_tasks_df['age_days'] >= 365.25).sum()
-    over_one_complete = ((child_tasks_df['age_days'] >= 365.25) & (child_tasks_df['immun_one_year_complete'] == 'yes')).sum()
-    under_one_complete = ((child_tasks_df['age_days'] < 365.25) & (child_tasks_df['immun_one_year_complete'] == 'yes')).sum()
-    logging.info('Children over one year: %i (%0.1f of open children)' % (num_child_over_one_yr, (num_child_over_one_yr * 100. / num_open_child)))
-    logging.info('Children over one w/ all one year immuns: %i (%0.1f of open children)' % (over_one_complete, (over_one_complete * 100. / num_open_child)))
-    logging.info('Children under one w/ all one year immuns: %i (%0.1f of open children)' % (under_one_complete, (under_one_complete * 100. / num_open_child)))
+    # children are at least one year of age - eligibility for this starts at 273 days
+    num_child_over_one_yr = (child_tasks_df['age_days'] >= 273).sum()
+    over_one_complete = ((child_tasks_df['age_days'] >= 273) & (child_tasks_df['immun_one_year_complete'] == 'yes')).sum()
+    #under_one_complete = ((child_tasks_df['age_days'] < 365.25) & (child_tasks_df['immun_one_year_complete'] == 'yes')).sum()
+    child_tasks_df['immun_one_year_date_is_date'] = child_tasks_df['immun_one_year_date'].apply(is_date)
+    completed_eventually = ((child_tasks_df['age_days'] >= 273) & (child_tasks_df['immun_one_year_date_is_date'] == True)).sum()    
+    logging.info('Children eligible for 1 yr immuns: %i (%0.1f of open children)' % (num_child_over_one_yr, (num_child_over_one_yr * 100. / num_open_child)))
+    logging.info('Children eligible w/ all one year immuns on time: %i (%0.1f of eligible children)' % (over_one_complete, (over_one_complete * 100. / num_child_over_one_yr)))
+    #logging.info('Children under one w/ all one year immuns: %i (%0.1f of open children)' % (under_one_complete, (under_one_complete * 100. / num_open_child)))
+    logging.info('Children eligible w/ all one year immuns eventually: %i (%0.1f of eligible children)' % (completed_eventually, (completed_eventually * 100. / num_child_over_one_yr)))
     
+    
+    for state in real_state_list:
+        temp = child_tasks_df[child_tasks_df['state_name'] == state]
+        temp_num_open_child = temp.shape[0]
+        if temp_num_open_child > 0:
+            temp_num_child_over_one_yr = (temp['age_days'] >= 273).sum()
+            temp_over_one_complete = ((temp['age_days'] >= 273) & (temp['immun_one_year_complete'] == 'yes')).sum()
+            #temp_under_one_complete = ((temp['age_days'] < 365.25) & (temp['immun_one_year_complete'] == 'yes')).sum()
+            temp_completed_eventually = ((temp['age_days'] >= 273) & (temp['immun_one_year_date_is_date'] == True)).sum()    
+            logging.info('%i children in %s (%0.1f pct of open children)' % (temp_num_open_child, state, temp_num_open_child * 100. / num_open_child))
+            logging.info('Children eligible for 1 yr immuns: %i (%0.1f pct of open children in state)' % (temp_num_child_over_one_yr, (temp_num_child_over_one_yr * 100. / temp_num_open_child)))
+            logging.info('Children eligible w/ all one year immuns on time: %i (%0.1f pct of eligible children in state)' % (temp_over_one_complete, (temp_over_one_complete * 100. / temp_num_child_over_one_yr)))
+            #logging.info('Children under one w/ all one year immuns: %i (%0.1f of pct open children in state)' % (temp_under_one_complete, (temp_under_one_complete * 100. / temp_num_open_child)))
+            logging.info('Children eligible w/ all one year immuns eventually: %i (%0.1f pct of eligible children in state)' % (temp_completed_eventually, (temp_completed_eventually * 100. / temp_num_child_over_one_yr)))
+
     # cases that have je available
     logging.info(child_w_task_df['je_available'].value_counts(dropna=False) * 100. / num_child_w_1plus_task)
     # cases that have rv available
@@ -266,29 +311,37 @@ if run_child:
     child_w_task_df['DPT Booster (immuns)_sched_code'] = np.where(child_w_task_df['on_penta'].eq(True), 'not_on_path', child_w_task_df['DPT Booster (immuns)_sched_code'].values)
     child_w_task_df['DPT Booster (immuns)1_sched_code'] = np.where(child_w_task_df['on_dpt_hepb'].eq(True), 'not_on_path', child_w_task_df['DPT Booster (immuns)1_sched_code'].values)
     
-    child_on_both_paths = child_w_task_df[child_w_task_df['on_both'] | child_w_task_df['on_none']]
-    child_on_both_paths.to_csv('child_tasks_bothnone_dpt_penta.csv')
+    #child_on_both_paths = child_w_task_df[child_w_task_df['on_both'] | child_w_task_df['on_none']]
+    #child_on_both_paths.to_csv('child_tasks_bothnone_dpt_penta.csv')
     logging.info('Case distribution on both Penta path and DPT/HepB path:')
     logging.info(child_w_task_df['on_both'].value_counts(dropna=False) / num_child_w_1plus_task)
     logging.info('Case distribution on neither Penta path nor DPT/HepB path:')
     logging.info(child_w_task_df['on_none'].value_counts(dropna=False) / num_child_w_1plus_task)
-        
-    logging.info('Pct on Penta: %0.1f' % (child_w_task_df['on_penta'].sum() * 100. / num_child_w_1plus_task))
-    logging.info('Pct on DPT / HepB: %0.1f' % (child_w_task_df['on_dpt_hepb'].sum() * 100. / num_child_w_1plus_task))
+    
+    # get real penta data
+    #logging.info('Pct of cases with defined value for penta_path')
+    #penta_info = child_w_task_df[(child_w_task_df['penta_path'] == 'dpt_hepb') | (child_w_task_df['penta_path'] == 'penta')]
+    #logging.info(penta_info['penta_path'].value_counts() * 100. / penta_info.sum())
+
+    logging.info('compared to penta info based on immun records')
+    child_on_some_sched = (child_w_task_df['on_none'] != True).sum()
+    logging.info('Pct on Penta out of on some sched: %0.1f' % (child_w_task_df['on_penta'].sum() * 100. / child_on_some_sched))
+    logging.info('Pct on DPT / HepB out of on some sched: %0.1f' % (child_w_task_df['on_dpt_hepb'].sum() * 100. / child_on_some_sched))
     logging.info('Pct on None: %0.1f' % (child_w_task_df['on_none'].sum() * 100. / num_child_w_1plus_task))
     for state in real_state_list:
         temp = child_w_task_df[child_w_task_df['state_name'] == state]
-        denom = temp.shape[0]
-        if denom != 0:
-            penta = temp['on_penta'].sum() * 100. / denom
-            none = temp['on_none'].sum() * 100. / denom
-            dpt = temp['on_dpt_hepb'].sum() * 100. / denom
+        denom2 = temp.shape[0]
+        denom1 = (temp['on_none'] != True).sum()
+        if denom2 != 0:
+            penta = temp['on_penta'].sum() * 100. / denom1
+            none = temp['on_none'].sum() * 100. / denom1
+            dpt = temp['on_dpt_hepb'].sum() * 100. / denom2
             logging.info('%s: Penta: %0.1f  DPT: %0.1f  None: %0.1f' % (state, penta, dpt, none))
 
     child_w_task_df.iloc[0:200].to_csv('test.csv')
     
     # create summary table
-    row_order = ['not_on_path', 'overdue', 'not_due_yet', 'got_early', 'got_late', 'got_on_time', 'got_in_buffer']
+    row_order = ['not_on_path', 'not_due_yet', 'overdue', 'got_early', 'got_late', 'got_on_time', 'got_in_buffer']
     summary_df = child_w_task_df[immun_list_code].apply(pd.Series.value_counts).fillna(0)
     summary_df = summary_df.reindex(row_order)
     
@@ -307,7 +360,6 @@ if run_child:
     onpath_summary_df = summary_df.drop(['not_due_yet', 'not_on_path'])
     onpath_summary_pct_df = onpath_summary_df / onpath_summary_df.sum() * 100
     summary_df.loc['Total'] = summary_df.sum()
-    # TODO - figure out this line is needed or not - summary_df = summary_df.append(onpath_summary_pct_df)
     
     # output a summary file
     summary_df.loc['received'] = summary_df.loc['got_early'] + summary_df.loc['got_late'] + summary_df.loc['got_on_time'] + summary_df.loc['got_in_buffer']
@@ -320,20 +372,25 @@ if run_child:
     
     # make a plot of summary data
     pct_plot_df = onpath_summary_pct_df.transpose()
+    my_colors = list(islice(cycle(['lightgrey', 'orange', 'salmon', 'green', 'lightgreen']), None, len(pct_plot_df)))
     immun_list_short.sort()
     pct_plot_df = pct_plot_df.reindex(immun_list_short)
     pct_plot_df.plot(kind='bar',
                     figsize=[16, 6],
                     stacked=True,
-                    title='Activity for all Immuns')
+                    colors=my_colors,
+                    title='Vaccine Schedule Performance for Children w/ 1+ Immun')
+    plt.tight_layout()
     
     immun_one_year_short = [i[:(len(i)-9)] for i in immun_one_year]
     immun_one_year_short.sort()
     pct_plot_df.loc[immun_one_year_short].plot(kind='bar',
                     figsize=[16, 6],
                     stacked=True,
-                    title='Activity for Immuns Due Before 1 Year of Age')
-
+                    colors=my_colors,
+                    title='Vaccine Schedule Performance for Children w/ 1+ Immun - Immuns Due by 1 Year')
+    plt.tight_layout()
+    
     logging.info('Received / Should have received by immun:')
     logging.info(summary_df.loc['pct_received'].sort_values(ascending=False).round(1))
     
