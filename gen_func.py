@@ -12,11 +12,18 @@ import logging
 import logging.config
 import datetime
 from requests.auth import HTTPBasicAuth
-import requests, zipfile, StringIO
+import requests, zipfile
+from io import StringIO
 import shutil
+<<<<<<< HEAD
 from dateutil.parser import parse
+=======
+import hashlib
+import settings
+from settings import DATA_DIR, OUTPUT_DIR
+>>>>>>> master
 
-location_file_dir = r'C:\Users\theism\Documents\Dimagi\Data\static-awc_location.csv'
+location_file_dir = DATA_DIR + '/static-awc_location.csv'
 
 def data_file_list(directory, regex):
     '''
@@ -47,8 +54,99 @@ def data_file_list(directory, regex):
     os.chdir(orig_dir)
     return output
 
+def _hash_from_filesize_and_cols(directory, regex, cols_to_use):
+  '''
+  Return a hash of the summed filesizes of the files in the directory.
+  This is used as a rough metric to see if anything has changed in
+  the directory. Also included are the fields to extract.
 
-def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None):
+  NOTE: right now there is no hash. It just returns the summed filesizes,
+  which should be good enough for our purposes
+
+  NOTE: creating a different HDF for each 'view' of the data leads to further
+  duplication of data, but for now that's acceptable.
+
+  Parameters
+  ----------
+  directory : string
+    Full path to directory
+
+  regex : regex object
+    Regex used to specify filenames of desired csv files
+  
+  Returns
+  -------
+  output : string
+    hash for this set of files
+  '''
+  try:
+    file_list = data_file_list(directory, regex)
+    orig_dir = os.getcwd()
+    os.chdir(directory)
+    sizes = [os.path.getsize(f) for f in file_list]
+    os.chdir(orig_dir)
+    
+    sorted_cols = list(cols_to_use) if cols_to_use else []
+    sorted_cols.sort()
+    return hashlib.sha1(
+      (str(sum(sizes)) + ''.join(sorted_cols)).encode()).hexdigest()
+  except Exception as err:
+    logging.error('An exception happened: ' + str(err))
+    os.chdir(orig_dir)
+    raise
+
+
+def forms_to_df(directory, regex, date_cols=None, cols_to_use=None):
+  '''
+  Load in form data to a single dataframe. This is an optimization
+  function that checks for an existing hd5 file and hash before
+  passing off the real work to csv_files_to_df.
+
+  Parameters
+  ----------
+  directory : string
+    Full path to directory
+
+  regex : regex object
+    Regex used to specify filenames of desired csv files
+
+  date_cols : list of strings
+    Import specific columns in datetime format (optional, defaults to None)
+
+  cols_to_use : list of string
+    Import a subset of columns (optional, defaults to None)
+
+  Returns
+  -------
+  output : pandas dataframe
+    Dataframe for these forms
+  '''
+  try:
+    orig_dir = os.getcwd()
+    os.chdir(directory)
+    current_hash = _hash_from_filesize_and_cols(directory, regex, cols_to_use=cols_to_use)
+    hash_file = open(settings.HASH_FILE, 'r')
+    hash_values = hash_file.readlines()
+
+    assert current_hash+'.hdf\n' in hash_values
+
+    logging.info('Loading cached data from %s.hdf' % (current_hash))
+    df = pd.read_hdf('%s.hdf' % (current_hash),
+                      settings.HDF_KEY, 
+                      usecols=cols_to_use,
+                      parse_dates=date_cols,
+                      infer_datetime_format=True,
+                      low_memory=False)
+    os.chdir(orig_dir)
+    return df
+  except FileNotFoundError as ex:
+    logging.info('HDF5 or hash file not found in "%s", loading from CSV files. Details:\n%s' % (directory, ex))
+  except AssertionError as ex:
+    logging.info('New hash for files in "%s" has changed, reloading from CSV files' % (directory))
+  
+  return csv_files_to_df(directory,regex,date_cols=date_cols, cols_to_use=cols_to_use,save_hdf=True)
+
+def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None, save_hdf=False):
     '''
     Combine all csv files in directory to a single dataframe.
 
@@ -65,6 +163,9 @@ def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None):
 
     cols_to_use : list of string
       Import a subset of columns (optional, defaults to None)
+    
+    save_hdf : boolean
+      Whether we should save a hash and hd5 export of the final dataframe
 
     Returns
     -------
@@ -89,6 +190,14 @@ def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None):
                           (data_file, len(frame.index)))
         df = pd.concat(frames, ignore_index=True, copy=False)
         logging.info('Total combined length is %i rows\n' % len(df.index))
+
+        if save_hdf:
+          current_hash = _hash_from_filesize_and_cols(directory, regex, cols_to_use)  
+          df.to_hdf('%s.hdf' % (current_hash), settings.HDF_KEY)
+          f = open(settings.HASH_FILE, 'a')
+          f.write('%s.hdf\n' % (current_hash))
+          f.close()
+
         os.chdir(orig_dir)
         return df
     except Exception as err:
