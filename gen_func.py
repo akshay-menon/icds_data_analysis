@@ -15,13 +15,10 @@ from requests.auth import HTTPBasicAuth
 import requests, zipfile
 from io import StringIO
 import shutil
-<<<<<<< HEAD
 from dateutil.parser import parse
-=======
 import hashlib
 import settings
 from settings import DATA_DIR, OUTPUT_DIR
->>>>>>> master
 
 location_file_dir = DATA_DIR + '/static-awc_location.csv'
 
@@ -139,7 +136,7 @@ def forms_to_df(directory, regex, date_cols=None, cols_to_use=None):
                       low_memory=False)
     os.chdir(orig_dir)
     return df
-  except FileNotFoundError as ex:
+  except IOError as ex:
     logging.info('HDF5 or hash file not found in "%s", loading from CSV files. Details:\n%s' % (directory, ex))
   except AssertionError as ex:
     logging.info('New hash for files in "%s" has changed, reloading from CSV files' % (directory))
