@@ -2,3 +2,6 @@ settings.py
 *.csv
 *.pyc
 .vscode
+*.ipynb
+.ipynb_checkpoint*
+
