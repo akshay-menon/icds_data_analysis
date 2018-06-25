@@ -282,7 +282,7 @@ def add_locations(df, left_index_column=None, location_column_names=['doc_id',
     try:
         orig_df_columns = df.columns.tolist()
         if location_column_names in orig_df_columns:
-            logging.info('WARNING - column names to add already exist')
+            logging.warn('WARNING - column names to add already exist')
         location_df = pd.read_csv(location_file_dir,
                                   index_col=location_column_names[0],
                                   usecols=location_column_names)
@@ -295,15 +295,18 @@ def add_locations(df, left_index_column=None, location_column_names=['doc_id',
                           right_index=True, how='left')
         desired_columns = location_column_names[1:] + orig_df_columns
     except:
-        logging.info('ERROR - unable to find location file, not adding \
-                    location columns.  Looking in %s'                                                                                                                                                                , location_file_dir)
+        logging.error('ERROR - unable to find location file, not adding \
+                    location columns.  Looking in %s'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   , location_file_dir)
         raise
     return df[desired_columns]
 
 
-def add_locations_by_username(df, location_column_names=['awc_site_code',
-                  'awc_name', 'block_name', 'district_name', 'state_name'],
-                  refresh_loc=False):
+def add_locations_by_username(df,
+                              location_column_names=[
+                                  'awc_site_code', 'awc_name', 'block_name',
+                                  'district_name', 'state_name'
+                              ],
+                              refresh_loc=False):
     '''
     Similar to add_locations, but for forms where location_id isn't available
     but 'username' is.  Takes username and adds location columns to an existing
@@ -330,10 +333,12 @@ def add_locations_by_username(df, location_column_names=['awc_site_code',
     try:
         orig_df_columns = df.columns.tolist()
         if location_column_names in orig_df_columns:
-            logging.info('WARNING - column names to add already exist')
-        location_df = pd.read_csv(location_file_dir, usecols=location_column_names)
+            logging.warn('WARNING - column names to add already exist')
+        location_df = pd.read_csv(
+            location_file_dir,
+            usecols=location_column_names)
         if 'awc_site_code' not in location_column_names:
-            logging.info('WARNING - awc_site_code required in location column list')
+            logging.warn('WARNING - awc_site_code required in location column list')
         location_df['awc_site_code'] = location_df['awc_site_code'].astype(str)
 
         # format the username appropriately, dropping any leading zeros
@@ -342,9 +347,11 @@ def add_locations_by_username(df, location_column_names=['awc_site_code',
 
         # add location information for each user
         output_df = pd.merge(df, location_df, left_on='username_fmt', right_on='awc_site_code', how='left')
-    except:
-        logging.info('ERROR - unable to find location file, not adding '
+    except Exception as e:
+        # TODO: if we want a specific error output, we catch a specific exception
+        logging.error('ERROR - unable to find location file, not adding '
                      'location columns.  Looking in %s', location_file_dir)
+        logging.error(e)
         raise
     return output_df
 
@@ -372,7 +379,7 @@ def num_by_location(column_name, filter_name):
         num_out = location_df[location_df[column_name] == filter_name].count()[column_name]
     except:
         logging.info('ERROR - unable to find location file, not adding \
-                     location columns.  Looking in %s'                                                                                                                                                                  , location_file_dir)
+                     location columns.  Looking in %s'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            , location_file_dir)
         raise
     return num_out
 
@@ -437,7 +444,7 @@ def add_usertype_from_id(df, df_id_col):
         df['location_type'] = df[df_id_col].map(loc_series)
     except:
         logging.info('ERROR - unable to find location file, not adding \
-                     location_type column.  Looking in %s'                                                                                                                                                                              , location_file_dir)
+                     location_type column.  Looking in %s'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    , location_file_dir)
     return df
 
 
