@@ -7,6 +7,8 @@ these functions support generic manipulation of ICDS files for data analysis
 @author: Matt Theis, July 2017
 """
 import os
+import datetime
+import glob
 import pandas as pd
 import logging
 import logging.config
@@ -20,7 +22,9 @@ import hashlib
 import settings
 from settings import DATA_DIR, OUTPUT_DIR
 
-location_file_dir = DATA_DIR + '/static-awc_location.csv'
+START_DATE = datetime.datetime(2017, 4, 1)
+
+location_file_dir = os.path.join(DATA_DIR, 'static-awc_location.csv')
 
 def data_file_list(directory, regex):
     '''
@@ -52,7 +56,7 @@ def data_file_list(directory, regex):
     return output
 
 def _hash_from_filesize_and_cols(directory, regex, cols_to_use):
-  '''
+    '''
   Return a hash of the summed filesizes of the files in the directory.
   This is used as a rough metric to see if anything has changed in
   the directory. Also included are the fields to extract.
@@ -76,25 +80,25 @@ def _hash_from_filesize_and_cols(directory, regex, cols_to_use):
   output : string
     hash for this set of files
   '''
-  try:
-    file_list = data_file_list(directory, regex)
-    orig_dir = os.getcwd()
-    os.chdir(directory)
-    sizes = [os.path.getsize(f) for f in file_list]
-    os.chdir(orig_dir)
-    
-    sorted_cols = list(cols_to_use) if cols_to_use else []
-    sorted_cols.sort()
-    return hashlib.sha1(
-      (str(sum(sizes)) + ''.join(sorted_cols)).encode()).hexdigest()
-  except Exception as err:
-    logging.error('An exception happened: ' + str(err))
-    os.chdir(orig_dir)
-    raise
+    try:
+        file_list = data_file_list(directory, regex)
+        orig_dir = os.getcwd()
+        os.chdir(directory)
+        sizes = [os.path.getsize(f) for f in file_list]
+        os.chdir(orig_dir)
+
+        sorted_cols = list(cols_to_use) if cols_to_use else []
+        sorted_cols.sort()
+        return hashlib.sha1(
+          (str(sum(sizes)) + ''.join(sorted_cols)).encode()).hexdigest()
+    except Exception as err:
+        logging.error('An exception happened: ' + str(err))
+        os.chdir(orig_dir)
+        raise
 
 
 def forms_to_df(directory, regex, date_cols=None, cols_to_use=None):
-  '''
+    '''
   Load in form data to a single dataframe. This is an optimization
   function that checks for an existing hd5 file and hash before
   passing off the real work to csv_files_to_df.
@@ -118,32 +122,32 @@ def forms_to_df(directory, regex, date_cols=None, cols_to_use=None):
   output : pandas dataframe
     Dataframe for these forms
   '''
-  try:
-    orig_dir = os.getcwd()
-    os.chdir(directory)
-    current_hash = _hash_from_filesize_and_cols(directory, regex, cols_to_use=cols_to_use)
-    hash_file = open(settings.HASH_FILE, 'r')
-    hash_values = hash_file.readlines()
+    try:
+        orig_dir = os.getcwd()
+        os.chdir(directory)
+        current_hash = _hash_from_filesize_and_cols(directory, regex, cols_to_use=cols_to_use)
+        hash_file = open(settings.HASH_FILE, 'r')
+        hash_values = hash_file.readlines()
 
-    assert current_hash+'.hdf\n' in hash_values
+        assert current_hash+'.hdf\n' in hash_values
 
-    logging.info('Loading cached data from %s.hdf' % (current_hash))
-    df = pd.read_hdf('%s.hdf' % (current_hash),
-                      settings.HDF_KEY, 
-                      usecols=cols_to_use,
-                      parse_dates=date_cols,
-                      infer_datetime_format=True,
-                      low_memory=False)
-    os.chdir(orig_dir)
-    return df
-  except FileNotFoundError as ex:
-    logging.info('HDF5 or hash file not found in "%s", loading from CSV files. Details:\n%s' % (directory, ex))
-  except AssertionError as ex:
-    logging.info('New hash for files in "%s" has changed, reloading from CSV files' % (directory))
-  
-  return csv_files_to_df(directory,regex,date_cols=date_cols, cols_to_use=cols_to_use,save_hdf=True)
+        logging.info('Loading cached data from %s.hdf' % (current_hash))
+        df = pd.read_hdf('%s.hdf' % (current_hash),
+                          settings.HDF_KEY,
+                          usecols=cols_to_use,
+                          parse_dates=date_cols,
+                          infer_datetime_format=True,
+                          low_memory=False)
+        os.chdir(orig_dir)
+        return df
+    except FileNotFoundError as ex:
+        logging.info('HDF5 or hash file not found in "%s", loading from CSV files. Details:\n%s' % (directory, ex))
+    except AssertionError as ex:
+        logging.info('New hash for files in "%s" has changed, reloading from CSV files' % (directory))
 
-def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None, save_hdf=False):
+    return csv_files_to_df(directory,regex,date_cols=date_cols, cols_to_use=cols_to_use,save_hdf=True)
+
+def csv_files_to_df(directory, regex=None, date_cols=None, cols_to_use=None, save_hdf=False, filename=None):
     '''
     Combine all csv files in directory to a single dataframe.
 
@@ -164,12 +168,29 @@ def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None, save_hdf
     save_hdf : boolean
       Whether we should save a hash and hd5 export of the final dataframe
 
+    filename : string
+      Glob for filename(s) to be loaded. Alternative to regex until we can replace that
     Returns
     -------
     output : pandas dataframe
       Dataframe of combined csv files
     '''
     try:
+        # TODO: We could use the code below to replace all the rest except that
+        #       we do need the regex because of repeat exports.
+        if filename:
+            # os.path.join makes this OS independent
+            all_files = glob.glob(os.path.join(directory, filename))
+
+            df_from_each_file = (pd.read_csv(
+                                      f, usecols=cols_to_use,
+                                      parse_dates=date_cols,
+                                      infer_datetime_format=True,
+                                      low_memory=False) for f in all_files)
+            concatenated_df   = pd.concat(df_from_each_file, ignore_index=True, copy=False)
+            logging.info('Total combined length is %i rows\n' % len(concatenated_df.index))
+            return concatenated_df
+
         file_list = data_file_list(directory, regex)
         frames = []
         orig_dir = os.getcwd()
@@ -189,11 +210,11 @@ def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None, save_hdf
         logging.info('Total combined length is %i rows\n' % len(df.index))
 
         if save_hdf:
-          current_hash = _hash_from_filesize_and_cols(directory, regex, cols_to_use)  
-          df.to_hdf('%s.hdf' % (current_hash), settings.HDF_KEY)
-          f = open(settings.HASH_FILE, 'a')
-          f.write('%s.hdf\n' % (current_hash))
-          f.close()
+            current_hash = _hash_from_filesize_and_cols(directory, regex, cols_to_use)
+            df.to_hdf('%s.hdf' % (current_hash), settings.HDF_KEY)
+            f = open(settings.HASH_FILE, 'a')
+            f.write('%s.hdf\n' % (current_hash))
+            f.close()
 
         os.chdir(orig_dir)
         return df
@@ -231,7 +252,7 @@ def combine_csvs(directory, new_directory, filename, regex, date_cols=None, cols
     big_df.to_csv(output_file)
     logging.info('Saved output to %s' % output_file)
 
-    
+
 def add_locations(df, left_index_column=None, location_column_names=['doc_id',
                   'awc_name', 'block_name', 'district_name', 'state_name'],
                   refresh_loc=False):
@@ -274,9 +295,9 @@ def add_locations(df, left_index_column=None, location_column_names=['doc_id',
                           right_index=True, how='left')
         desired_columns = location_column_names[1:] + orig_df_columns
     except:
-       logging.info('ERROR - unable to find location file, not adding \
-                    location columns.  Looking in %s', location_file_dir)
-       raise
+        logging.info('ERROR - unable to find location file, not adding \
+                    location columns.  Looking in %s'                                                                                                                                                                , location_file_dir)
+        raise
     return df[desired_columns]
 
 
@@ -314,17 +335,17 @@ def add_locations_by_username(df, location_column_names=['awc_site_code',
         if 'awc_site_code' not in location_column_names:
             logging.info('WARNING - awc_site_code required in location column list')
         location_df['awc_site_code'] = location_df['awc_site_code'].astype(str)
-        
+
         # format the username appropriately, dropping any leading zeros
         df['username'] = df['username'].astype(str)
         df['username_fmt'] = df['username'].apply(lambda x: x[1:] if x[0] == '0' else x)
 
-        # add location information for each user        
+        # add location information for each user
         output_df = pd.merge(df, location_df, left_on='username_fmt', right_on='awc_site_code', how='left')
     except:
-       logging.info('ERROR - unable to find location file, not adding '
-                    'location columns.  Looking in %s', location_file_dir)
-       raise
+        logging.info('ERROR - unable to find location file, not adding '
+                     'location columns.  Looking in %s', location_file_dir)
+        raise
     return output_df
 
 
@@ -351,7 +372,7 @@ def num_by_location(column_name, filter_name):
         num_out = location_df[location_df[column_name] == filter_name].count()[column_name]
     except:
         logging.info('ERROR - unable to find location file, not adding \
-                     location columns.  Looking in %s', location_file_dir)
+                     location columns.  Looking in %s'                                                                                                                                                                  , location_file_dir)
         raise
     return num_out
 
@@ -416,7 +437,7 @@ def add_usertype_from_id(df, df_id_col):
         df['location_type'] = df[df_id_col].map(loc_series)
     except:
         logging.info('ERROR - unable to find location file, not adding \
-                     location_type column.  Looking in %s', location_file_dir)
+                     location_type column.  Looking in %s'                                                                                                                                                                              , location_file_dir)
     return df
 
 
@@ -555,7 +576,7 @@ def iterate_ucr_download(ucr_name, my_filter, filter_list, target_dir):
     -------
     None
     '''
-    
+
     base_url = 'https://www.icds-cas.gov.in/a/icds-cas/configurable_reports/data_sources/export/'
     # eventually find a way not to hardcode this
     user, password = get_credentials(r'C:\Users\theism\Documents\Dimagi\Admin\user_info.csv', 'icds')
@@ -580,3 +601,53 @@ def renumber_files(directory, start_num, basename):
         num += 1
     print('Renumbering %i files in %s' % (num - start_num, directory))
     return
+
+
+def only_most_recent_deliveries(df, agg='caseid', column='received_on'):
+    '''
+    Convenience function used in multiple analyses. This assumes that the df has
+    the following columns:
+    
+    form.has_deliveried : whether the woman has delivered or not
+    
+    TODO: Need to be sure recevied_on is the column we want to use
+    TODO: It's not clear we actually want to remove duplicate delivery forms.
+          e.g., if a woman gives birth multiple times (could look to see if 
+          the delivery dates are more than 9 months apart)
+
+    Parameters
+    ----------
+    df : dataframe
+      The dataframe to remove duplicate deliveries
+    agg : string
+      The column name to aggregate by
+    column : string
+      The column name for the date of this form
+
+    Returns
+    -------
+    Filtered data
+    '''
+    return df[df['form.has_delivered'] == 'yes'] \
+              .sort_values(by=column, ascending=False) \
+              .groupby(agg) \
+              .first() \
+              .reset_index()
+
+def filter_by_start_date(df, column='received_on', date=START_DATE):
+    '''
+    Filter the dataframe by the specified column. This is just a convenience to
+    ensure that we're doing the same thing across scripts
+    
+    TODO: Check the correct default for the column
+
+    Parameters
+    ----------
+    df : dataframe
+      The dataframe to filter
+    column : string
+      The name of the column we're filtering
+    date : datetime or date
+      The earliest date (inclusive)
+    '''
+    return df[df[column] >= date]
