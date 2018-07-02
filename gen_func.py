@@ -145,6 +145,7 @@ def forms_to_df(directory, regex, date_cols=None, cols_to_use=None):
     except AssertionError as ex:
         logging.info('New hash for files in "%s" has changed, reloading from CSV files' % (directory))
 
+    os.chdir(orig_dir)
     return csv_files_to_df(directory,regex,date_cols=date_cols, cols_to_use=cols_to_use,save_hdf=True)
 
 def csv_files_to_df(directory, regex=None, date_cols=None, cols_to_use=None, save_hdf=False, filename=None):
@@ -296,7 +297,7 @@ def add_locations(df, left_index_column=None, location_column_names=['doc_id',
         desired_columns = location_column_names[1:] + orig_df_columns
     except:
         logging.error('ERROR - unable to find location file, not adding \
-                    location columns.  Looking in %s'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   , location_file_dir)
+                    location columns.  Looking in %s'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        , location_file_dir)
         raise
     return df[desired_columns]
 
@@ -379,7 +380,7 @@ def num_by_location(column_name, filter_name):
         num_out = location_df[location_df[column_name] == filter_name].count()[column_name]
     except:
         logging.info('ERROR - unable to find location file, not adding \
-                     location columns.  Looking in %s'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            , location_file_dir)
+                     location columns.  Looking in %s'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  , location_file_dir)
         raise
     return num_out
 
@@ -444,7 +445,7 @@ def add_usertype_from_id(df, df_id_col):
         df['location_type'] = df[df_id_col].map(loc_series)
     except:
         logging.info('ERROR - unable to find location file, not adding \
-                     location_type column.  Looking in %s'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    , location_file_dir)
+                     location_type column.  Looking in %s'                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              , location_file_dir)
     return df
 
 
