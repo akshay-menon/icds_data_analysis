@@ -13,14 +13,15 @@ import logging.config
 import datetime
 from requests.auth import HTTPBasicAuth
 import requests, zipfile
-from io import StringIO
+from io import BytesIO
 import shutil
 from dateutil.parser import parse
 import hashlib
 import settings
 from settings import DATA_DIR, OUTPUT_DIR
 
-location_file_dir = DATA_DIR + '/static-awc_location.csv'
+location_file_dir = os.path.join(DATA_DIR, 'static-awc_location.csv')
+credential_path = os.path.join(os.path.dirname(DATA_DIR), 'Admin' ,'user_info.csv')
 
 def data_file_list(directory, regex):
     '''
@@ -134,6 +135,7 @@ def forms_to_df(directory, regex, date_cols=None, cols_to_use=None):
                       parse_dates=date_cols,
                       infer_datetime_format=True,
                       low_memory=False)
+    df = optimize_df_memory(df)
     os.chdir(orig_dir)
     return df
   except IOError as ex:
@@ -141,9 +143,9 @@ def forms_to_df(directory, regex, date_cols=None, cols_to_use=None):
   except AssertionError as ex:
     logging.info('New hash for files in "%s" has changed, reloading from CSV files' % (directory))
   
-  return csv_files_to_df(directory,regex,date_cols=date_cols, cols_to_use=cols_to_use,save_hdf=True)
+  return csv_files_to_df(directory, regex, date_cols=date_cols, cols_to_use=cols_to_use, dtypes=None, save_hdf=True)
 
-def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None, save_hdf=False):
+def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None, dtypes=None, save_hdf=False):
     '''
     Combine all csv files in directory to a single dataframe.
 
@@ -160,6 +162,9 @@ def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None, save_hdf
 
     cols_to_use : list of string
       Import a subset of columns (optional, defaults to None)
+      
+    dtypes : dictionary
+      Dictionary of column names and known data types
     
     save_hdf : boolean
       Whether we should save a hash and hd5 export of the final dataframe
@@ -181,12 +186,11 @@ def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None, save_hdf
             frame = pd.read_csv(data_file, usecols=cols_to_use,
                                 parse_dates=date_cols,
                                 infer_datetime_format=True,
-                                low_memory=False)
+                                dtype = dtypes)
             frames.append(frame)
             logging.info('Adding %s with length %i rows' %
                           (data_file, len(frame.index)))
         df = pd.concat(frames, ignore_index=True, copy=False)
-        logging.info('Total combined length is %i rows\n' % len(df.index))
 
         if save_hdf:
           current_hash = _hash_from_filesize_and_cols(directory, regex, cols_to_use)  
@@ -194,7 +198,11 @@ def csv_files_to_df(directory, regex, date_cols=None, cols_to_use=None, save_hdf
           f = open(settings.HASH_FILE, 'a')
           f.write('%s.hdf\n' % (current_hash))
           f.close()
-
+          
+        #TODO - to_hdf not using optimized df b/c can't handle categories.  Can save format='table'
+        #as setting, but causes other errors when importing due to 'operands broadcast together due to array size
+        df = optimize_df_memory(df)
+        logging.info('Total combined length is %i rows\n' % len(df.index))
         os.chdir(orig_dir)
         return df
     except Exception as err:
@@ -318,11 +326,15 @@ def add_locations(df, left_index_column=None, location_column_names=['doc_id',
         refresh_locations()
     try:
         orig_df_columns = df.columns.tolist()
+        known_dtype = {'awc_name':'object', 'block_name':'category',
+                       'district_name':'category', 'state_name':'category'}
         if location_column_names in orig_df_columns:
             logging.info('WARNING - column names to add already exist')
         location_df = pd.read_csv(location_file_dir,
                                   index_col=location_column_names[0],
-                                  usecols=location_column_names)
+                                  usecols=location_column_names,
+                                  dtype=known_dtype)
+        location_df = optimize_df_memory(location_df)
         if left_index_column is not None:
             df = pd.merge(df, location_df, left_on=left_index_column,
                           right_index=True, how='left')
@@ -366,9 +378,14 @@ def add_locations_by_username(df, location_column_names=['awc_site_code',
         refresh_locations()
     try:
         orig_df_columns = df.columns.tolist()
+        known_dtype = {'awc_name':'object', 'block_name':'category',
+                       'district_name':'category', 'state_name':'category'}
         if location_column_names in orig_df_columns:
             logging.info('WARNING - column names to add already exist')
-        location_df = pd.read_csv(location_file_dir, usecols=location_column_names)
+        location_df = pd.read_csv(location_file_dir,
+                                  usecols=location_column_names,
+                                  dtype=known_dtype)
+        location_df = optimize_df_memory(location_df)
         if 'awc_site_code' not in location_column_names:
             logging.info('WARNING - awc_site_code required in location column list')
         location_df['awc_site_code'] = location_df['awc_site_code'].astype(str)
@@ -405,7 +422,10 @@ def num_by_location(column_name, filter_name):
       Number in input dataframe that match the specified filter
     '''
     try:
-        location_df = pd.read_csv(location_file_dir, index_col='doc_id', low_memory=False)
+        known_dtype = {'awc_name':'object', 'block_name':'category',
+                       'district_name':'category', 'state_name':'category'}
+        location_df = pd.read_csv(location_file_dir, index_col='doc_id', low_memory=False, dtype=known_dtype)
+        location_df = optimize_df_memory(location_df)
         num_out = location_df[location_df[column_name] == filter_name].count()[column_name]
     except:
         logging.info('ERROR - unable to find location file, not adding \
@@ -463,7 +483,10 @@ def add_usertype_from_id(df, df_id_col):
     try:
         col_names = ['doc_id', 'supervisor_id', 'block_id',
                      'district_id', 'state_id']
-        loc_df = pd.read_csv(location_file_dir, usecols=col_names)
+        known_dtype = {'awc_name':'object', 'block_name':'category',
+                       'district_name':'category', 'state_name':'category'}
+        loc_df = pd.read_csv(location_file_dir, usecols=col_names, dtype=known_dtype)
+        loc_df = optimize_df_memory(loc_df)
         aww_series = pd.Series('aww', loc_df['doc_id'].unique())
         ls_series = pd.Series('ls', loc_df['supervisor_id'].unique())
         block_series = pd.Series('block', loc_df['block_id'].unique())
@@ -497,6 +520,10 @@ def start_logging(output_dir):
     '''
     text_out = os.path.join(output_dir, ('log_text_' +
                             str(datetime.date.today()) + '.txt'))
+    
+    # create directory if doesn't exist already
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
     # logging already happening? - if so, don't add more logging handlers
     if not len(logging.getLogger('').handlers):
@@ -574,7 +601,7 @@ def download_ucr(url, user, password, new_file_name, target_dir):
 
     # its a zipfile, so unpack and save in target_dir
     logging.info('Unzipping file...')
-    z = zipfile.ZipFile(StringIO.StringIO(r.content))
+    z = zipfile.ZipFile(BytesIO(r.content))
     cur_file_name = z.extract(z.namelist()[0], target_dir)
     shutil.move(cur_file_name, os.path.join(target_dir, new_file_name))
     logging.info('Moved new file %s to %s directory' % (new_file_name, target_dir))
@@ -582,14 +609,25 @@ def download_ucr(url, user, password, new_file_name, target_dir):
 
 def refresh_locations():
     '''Will delete and re-download the static location file from ucr'''
-    location_download_link = 'https://www.icds-cas.gov.in/a/icds-cas/configurable_reports/data_sources/export/static-icds-cas-static-awc_location/?format=csv'
-    user, password = get_credentials(r'C:\Users\theism\Documents\Dimagi\Admin\user_info.csv', 'icds')
-    target_dir = (r'C:\Users\theism\Documents\Dimagi\Data')
-    location_file_name = 'static-awc_location.csv'
-    os.remove(os.path.join(target_dir, location_file_name))
-    logging.info('Refreshing data file: %s' % location_file_name)
-    download_ucr(location_download_link, user, password, location_file_name, target_dir)
-    return
+    logging.info('Refreshing data file: %s' % location_file_dir)
+    try:
+        location_download_link = 'https://www.icds-cas.gov.in/a/icds-cas/configurable_reports/data_sources/export/static-icds-cas-static-awc_location/?format=csv'
+        user, password = get_credentials(credential_path, 'icds')
+
+        # rename and verify download before delete - and see if file even exists
+        old_file_name = location_file_dir[:-4] + 'OLD.csv'
+        if os.path.isfile(location_file_dir):
+            logging.info('Found older location file.  Getting latest data.')
+            os.rename(location_file_dir, old_file_name)
+
+        download_ucr(location_download_link, user, password, os.path.basename(location_file_dir), os.path.dirname(location_file_dir))
+        if os.path.isfile(location_file_dir) and os.path.isfile(old_file_name):
+            logging.info('Deleting old location file.  New one downloaded.')
+            os.remove(old_file_name)
+        return
+    except Exception as err:
+        logging.error('An exception happened: ' + str(err))
+        raise
 
 def iterate_ucr_download(ucr_name, my_filter, filter_list, target_dir):
     '''Downloads mulitple UCR data from HQ.  Use sparingly.
@@ -647,3 +685,83 @@ def is_date(string):
         return True
     except ValueError:
         return False
+ 
+    
+# hat tip: https://www.dataquest.io/blog/pandas-big-data/
+def mem_usage(pandas_obj):
+    '''Finds memory usage of a pandas dataframe or series
+    
+    Parameters
+    ----------
+    pandas_obj : pandas series or dataframe
+    
+    Returns
+    -------
+    string of memory usage
+    '''
+    if isinstance(pandas_obj,pd.DataFrame):
+        usage_b = pandas_obj.memory_usage(deep=True).sum()
+    else: # we assume if not a df it's a series
+        usage_b = pandas_obj.memory_usage(deep=True)
+    usage_mb = usage_b / 1024 ** 2 # convert bytes to megabytes
+    return "{:03.2f} MB".format(usage_mb)
+
+
+# hat tip: https://www.dataquest.io/blog/pandas-big-data/
+def obj_to_cat(df):
+    '''Changes object column types to categoricals if more efficient
+    Warning - need to reconvert a column back to numeric dtype to do math on it
+    
+    Parameters
+    ----------
+    df : pandas dataframe
+    
+    Parameters
+    ----------
+    df : pandas dataframe with object columns turned to categories (where makes sense)
+    '''
+    df_obj = df.select_dtypes(include=['object'])
+    converted_obj = pd.DataFrame()
+    for col in df_obj.columns:
+        num_unique_values = len(df_obj[col].unique())
+        num_total_values = len(df_obj[col])
+        if num_unique_values / num_total_values < 0.5:
+            converted_obj.loc[:,col] = df_obj[col].astype('category')
+        else:
+            converted_obj.loc[:,col] = df_obj[col]
+    df[converted_obj.columns] = converted_obj
+    return df
+
+
+# combining goodness from: https://www.dataquest.io/blog/pandas-big-data/
+def optimize_df_memory(df):
+    '''Optimize the memory usage of a dataframe by turning objects into 
+    categories and downcasting floats and ints
+    
+    Parameters
+    ----------
+    df : pandas dataframe
+    
+    Parameters
+    ----------
+    df : memory optimized pandas dataframe
+    '''
+    logging.info('Optimizing dataframe memory...')
+    initial_mem = mem_usage(df)
+    types = df.dtypes.unique()    
+    # turn objects to categories
+    if object in types:
+        df = obj_to_cat(df)
+    # downcast float
+    if float in types:
+        df_float = df.select_dtypes(include=['float'])
+        conv_float = df_float.apply(pd.to_numeric,downcast='float')
+        df[conv_float.columns] = conv_float    
+    # downcast int
+    if int in types:
+        df_int = df.select_dtypes(include=['int'])
+        conv_int = df_int.apply(pd.to_numeric,downcast='integer')
+        df[conv_int.columns] = conv_int
+    end_mem = mem_usage(df)
+    logging.info('Dataframe memory optimized from %s to %s' % (initial_mem, end_mem))
+    return df
