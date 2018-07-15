@@ -71,7 +71,7 @@ def _process_metric(df, col, locations, totalname=''):
         loc = locations[count:]
         new_agg = (df.groupby(loc)[sum_col].sum() / df.groupby(loc)[total_col].sum()).reset_index()
         new_agg.columns = loc + [pct_col]
-        df = pd.merge(df, new_agg, how='left', on=loc)
+        df = pd.merge(df.reset_index(), new_agg, how='left', on=loc).set_index(locations)
         count = count + 1
 
     return df
@@ -107,7 +107,7 @@ def _col_names_by_metric(col, locations, totalname):
     return cols
 
 # each indicator gets its own file
-have_del_block_df[locations + _col_names_by_metric('home_delivery', locations, 'delivery')].to_csv('overall_home_deliveries.csv')
-have_del_block_df[locations + _col_names_by_metric('hospital_delivery', locations, 'delivery')].to_csv('overall_hospital_deliveries.csv')
-have_del_block_df[locations + _col_names_by_metric('caesarean_delivery', locations, 'delivery')].to_csv('overall_caesarean_deliveries.csv')
+have_del_block_df[_col_names_by_metric('home_delivery', locations, 'delivery')].to_csv('overall_home_deliveries.csv')
+have_del_block_df[_col_names_by_metric('hospital_delivery', locations, 'delivery')].to_csv('overall_hospital_deliveries.csv')
+have_del_block_df[_col_names_by_metric('caesarean_delivery', locations, 'delivery')].to_csv('overall_caesarean_deliveries.csv')
 have_del_block_df.to_csv('delivery_full.csv')

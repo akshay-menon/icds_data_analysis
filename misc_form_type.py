@@ -25,13 +25,12 @@ output_dir = 'C:\\Users\\theism\\Documents\\Dimagi\\Results\\New Forms'
 
 # if want to look at one or a subset of forms
 subset_only = True
-subset_forms = ['Migration']
+subset_forms = ['[DA] Availing of ICDS Services']
 
 # states we care about
 real_state_list = ['Madhya Pradesh', 'Chhattisgarh',
                    'Andhra Pradesh', 'Bihar', 'Jharkhand',
-                   'Rajasthan']
-#, 'Uttar Pradesh', 'Maharashtra'] 
+                   'Rajasthan', 'Uttar Pradesh', 'Maharashtra'] 
 
 ## ------------- don't edit below here -----------------------------
 
