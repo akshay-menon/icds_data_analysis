@@ -1,0 +1,74 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Jul 31 12:00:59 2018
+
+@author: Admin
+"""
+
+import pandas as pd
+import os
+import numpy as np
+from scipy.stats import norm
+import matplotlib.pyplot as plt
+from collections import Counter
+
+# Set working directory
+os.chdir('C:\\Users\\Admin\\Dropbox (Dimagi)\\Dimagi - Projects\\Gates Foundation\\ICDS Scale Up\\Data Analysis\\ICDS Lab Analysis\\(akshay) form gps analysis')
+
+## Load the data set -- for multiple files
+#df_1 = pd.read_csv('gps_samastipur_1.csv')
+#df_2 = pd.read_csv('gps_samastipur_2.csv')
+#df = df_1.append(df_2)
+#df_reduced = df[['username', 'form.gps_location']]
+
+# Load the data set -- for a single file
+df = pd.read_csv('gps_vidisha.csv')
+df_reduced = df[['username', 'form.gps_location']]
+
+# Find out number of forms submitted per users
+users = df_reduced[['username']]
+form_count = Counter(users.username)
+form_count = pd.DataFrame.from_dict(form_count, orient='index').reset_index()
+form_count.columns = ['username', 'count']
+
+# Find out number of forms per user that have a gps value
+users_populated = df_reduced.dropna()
+populated_count = Counter(users_populated.username)
+populated_count = pd.DataFrame.from_dict(populated_count, orient='index').reset_index()
+populated_count.columns = ['username', 'count_populated']
+
+# Join the two data frames
+pop_count = pd.merge(form_count, populated_count, how='left', on=['username'])
+pop_count['percentage'] = np.around(pop_count['count_populated']/pop_count['count']*100)
+pop_count = pop_count.fillna(0)
+pop_count = pop_count.sort_values(by='percentage', ascending=False)
+
+# Plot histogram
+mu, std = norm.fit(pop_count.percentage)
+plt.hist(pop_count.percentage, bins=20, alpha=0.6, color='g')
+
+# Plot the PDF.
+xmin, xmax = plt.xlim()
+x = np.linspace(xmin, xmax, 100)
+p = norm.pdf(x, mu, std)
+plt.plot(x, p, 'k', linewidth=2)
+title = "W. Godavari | mu = %.2f, std = %.2f" % (mu, std)
+plt.title(title)
+
+plt.show()
+
+# Accuracy analysis
+df_gps_split = users_populated['form.gps_location'].str.split(' ', expand=True)
+df_accuracy = df_gps_split[[3]]
+df_accuracy.columns = ['accuracy']
+df_accuracy.accuracy = df_accuracy.accuracy.astype(float)
+df_accuracy.describe()
+
+# Plot histogram for accuracy
+mu_acc, std_acc = norm.fit(df_accuracy.accuracy)
+plt.hist(df_accuracy.accuracy, bins=10, range=[0,100], alpha=0.6, color='g')
+title = "Vidisha | mu = %.2f, std = %.2f" % (mu_acc, std_acc)
+plt.title(title)
+
+plt.show()
+
