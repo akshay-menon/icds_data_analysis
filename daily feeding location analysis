@@ -1,0 +1,110 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Jul 23 12:30:15 2018
+
+@author: Admin
+"""
+# Import packages
+import pandas as pd
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+from collections import Counter
+import seaborn as sns
+import math
+from geopy import distance
+
+# define function to calculate distance b/w two GPS coordinates
+def haversine_np(lon1, lat1, lon2, lat2):
+    """
+    Calculate the great circle distance between two points
+    on the earth (specified in decimal degrees)
+
+    All args must be of equal length.    
+
+    """
+    lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
+
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+
+    a = np.sin(dlat/2.0)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2.0)**2
+
+    c = 2 * np.arcsin(np.sqrt(a))
+    km = 6367 * c
+    return km
+
+# Set working directory
+os.chdir('C:\\Users\\Admin\\Dropbox (Dimagi)\\Dimagi - Projects\\Gates Foundation\\ICDS Scale Up\\Data Analysis\\ICDS Lab Analysis\\(akshay) form gps analysis')
+
+# Load the data set -- for multiple files
+df_1 = pd.read_csv('daily feeding_samastipur_1.csv')
+df_2 = pd.read_csv('daily feeding_samastipur_2.csv')
+df_3 = pd.read_csv('daily feeding_samastipur_3.csv')
+df_4 = pd.read_csv('daily feeding_samastipur_4.csv')
+df = df_1.append(df_2)
+df = df.append(df_3)
+df = df.append(df_4)
+df_reduced = df[['username', 'form.gps_location', 'form.photo_children_present']]
+
+## Load the data set -- for a single file
+#df = pd.read_csv('daily feeding_vidisha.csv')
+#df_reduced = df[['username', 'form.gps_location', 'form.photo_children_present']]
+
+# Keep only rows that have a gps location, photo and accuracy of 10m
+df_clean = df_reduced.dropna()
+df_username_gps = df_clean[df_clean['form.photo_children_present'] != "---"]
+df_username_gps[['lat', 'long', 'accuracy', 'elevation' ]] = df_username_gps['form.gps_location'].str.split(' ', expand=True)
+df_username_gps.lat = df_username_gps.lat.astype(float)
+df_username_gps.long = df_username_gps.long.astype(float)
+df_username_gps.accuracy = df_username_gps.accuracy.astype(float)
+df_username_gps = np.around(df_username_gps, decimals=3)
+df_username_gps = df_username_gps[df_username_gps.accuracy < 100]
+
+# Find the users who have submitted maximum forms
+user = df_username_gps[['username']]
+form_count = Counter(user.username)
+form_count = pd.DataFrame.from_dict(form_count, orient='index').reset_index()
+form_count.columns = ['username', 'count']
+form_count = form_count.sort_values(by='count', ascending=False)
+
+# choose number of users to plot
+num_users = len(form_count)
+top_users = form_count.iloc[0:num_users, 0]
+
+# Subset the data to include only the top users
+df_topusers = df_username_gps.loc[df_username_gps.username.isin(top_users)]
+
+unique_locations = df_topusers.groupby(['username','lat','long']).size().reset_index().rename(columns={0:'count'})
+unique_locations = pd.merge(unique_locations, form_count, how = 'left', on = "username")
+unique_locations.columns = ['username', 'lat', 'long', 'count', 'forms per user']
+unique_locations['percentage'] = round((unique_locations['count'] /  unique_locations['forms per user']) * 100, 0)
+unique_locations = unique_locations.sort_values(by='count', ascending=False)
+unique_locations['size_marker'] = unique_locations['count'].apply(lambda x: x**1.5)
+unique_locations['color_var'] = unique_locations['username'].astype(object)
+
+df_number_unique_locations = unique_locations.groupby(['username'])[['username']].count()
+av_num_unique_locations = df_number_unique_locations['username'].mean() 
+std_num_unique_locations = df_number_unique_locations['username'].std()
+
+df_top_locations = unique_locations.sort_values('percentage',ascending = False).groupby('username').head(1)
+av_perc_forms = df_top_locations['percentage'].mean()
+std_av_perc_forms = df_top_locations['percentage'].std()
+
+df_distance = unique_locations.groupby('username', as_index = False)['lat','long'].mean()
+df_distance.columns = ['username','av_lat','av_long']
+unique_locations = pd.merge(unique_locations, df_distance, how = 'left', on = 'username')
+unique_locations['distance'] = haversine_np(unique_locations['long'], unique_locations['lat'], unique_locations['av_long'], unique_locations['av_lat'])
+av_distance = unique_locations['distance'].median()
+std_distance = unique_locations['distance'].std()
+
+# Plot 
+
+fig, ax = plt.subplots()
+for i in top_users:
+   data = unique_locations[unique_locations.color_var == i]
+   ax.scatter(data.long, data.lat,
+               s=data.size_marker,
+               alpha=1)
+plt.title('W. Godavari')
+plt.show()
